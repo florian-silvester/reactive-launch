@@ -1,0 +1,7 @@
+.DS_Store
+node_modules/
+.claude/
+.push-sync/
+.env
+.env.*
+*.log
