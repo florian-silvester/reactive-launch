@@ -3326,6 +3326,47 @@ function initHeroAnimation() {
   });
 }
 
+// ================================================================================
+// 🎬 HERO VIDEO PARALLAX (data-hero="video")
+// ================================================================================
+// Scroll-triggered parallax for the video-only hero used on the test homepage
+// variant. Translates the hero element down as the page scrolls up, so the hero
+// appears to lag behind the page's upward motion — a subtle "lingering" parallax-out.
+//
+// No-op when [data-hero="video"] is not present, so the original homepage with the
+// scroll-card scrub animation is completely unaffected.
+function initHeroVideoParallax() {
+  const hero = document.querySelector('[data-hero="video"]');
+  if (!hero) return;
+  if (typeof gsap === 'undefined') return;
+  if (hero.dataset.heroVideoParallaxInit === 'true') return;
+  hero.dataset.heroVideoParallaxInit = 'true';
+
+  if (typeof ScrollTrigger !== 'undefined') {
+    gsap.registerPlugin(ScrollTrigger);
+  }
+
+  // Hero translates DOWN as the page scrolls UP — net effect: appears to move up
+  // ~15vh slower than scroll across its own height, creating the "delayed" feel.
+  // scrub: 0.6 adds a small catch-up smoothing so motion isn't pixel-locked to scroll.
+  gsap.fromTo(hero,
+    { y: 0 },
+    {
+      y: '15vh',
+      ease: 'none',
+      scrollTrigger: {
+        trigger: hero,
+        start: 'top top',
+        end: 'bottom top',
+        scrub: 0.6,
+        invalidateOnRefresh: true,
+      },
+    }
+  );
+
+  console.log('🎬 Hero video parallax initialized');
+}
+
 // Try to start auto-scroll if DOM is already loaded (for direct page loads)
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
   console.log('📄 DOM already ready, initializing standalone auto-scroll...');
@@ -3336,6 +3377,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initRadialOverlay();
   initLidarScanners();
   initHeroAnimation();
+  initHeroVideoParallax();
   initFixedSectionSorting();
   initScrubTypeText();
   initHeaderTypeText();
@@ -3349,6 +3391,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     initRadialOverlay();
     initLidarScanners();
     initHeroAnimation();
+    initHeroVideoParallax();
     initFixedSectionSorting();
     initScrubTypeText();
     initHeaderTypeText();
