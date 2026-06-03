@@ -2826,7 +2826,18 @@ function initHeroAnimation() {
     // insets matching the natural cell-slot. The image inside doesn't transform.
     // CSS clip-path with NEGATIVE inset is clamped to 0, so we cannot expand a
     // small element via clip-path — instead we expand the element itself.
-    const heroImgWrap = heroWrap ? heroWrap.querySelector('.u-image-wrapper') : null;
+    // Support both Visual Image (.u-image-wrapper > img) and Visual Video (<video>
+    // child of .hero_cell_wrap, no wrapper). When .u-image-wrapper is absent, fall
+    // back to the <video> / <picture> / <img> element itself — GSAP transforms and
+    // clip-path apply to video/img elements just as they do to a wrapper div.
+    // This keeps the hero intro choreography (clip-path zoom + typewriter) working
+    // whether the hero cell media is an image or a video.
+    const heroImgWrap = heroWrap
+      ? (heroWrap.querySelector('.u-image-wrapper')
+         || heroWrap.querySelector('video')
+         || heroWrap.querySelector('picture')
+         || heroWrap.querySelector('img'))
+      : null;
     let heroFinalClip = null; // remembered for stage 1
     let heroWrapRect  = null;
     if (heroWrap && heroImgWrap) {
@@ -2873,18 +2884,32 @@ function initHeroAnimation() {
 
     console.log('🎬 hero-animation: ready —', cells.length, 'cells, hero at index', heroIdx, '· trigger=', outer.className);
 
+    // Wait for the hero's intro media to be ready before playing intro text.
+    // Supports <img> (img.complete + decode), <video> (readyState + canplay), and
+    // the case where heroImgWrap IS the media element directly (no wrapper).
     const waitForHeroIntroImage = () => {
-      const img = heroImgWrap?.querySelector('img');
-      if (!img) return Promise.resolve();
-      if (img.complete) {
-        return typeof img.decode === 'function'
-          ? img.decode().catch(() => undefined)
+      if (!heroImgWrap) return Promise.resolve();
+      const media = heroImgWrap.matches?.('img, video')
+        ? heroImgWrap
+        : (heroImgWrap.querySelector('img, video'));
+      if (!media) return Promise.resolve();
+      if (media.tagName === 'VIDEO') {
+        if (media.readyState >= 2) return Promise.resolve(); // HAVE_CURRENT_DATA
+        return new Promise((resolve) => {
+          const done = () => resolve();
+          media.addEventListener('canplay', done, { once: true });
+          media.addEventListener('error', done, { once: true });
+        });
+      }
+      if (media.complete) {
+        return typeof media.decode === 'function'
+          ? media.decode().catch(() => undefined)
           : Promise.resolve();
       }
       return new Promise((resolve) => {
         const done = () => resolve();
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', done, { once: true });
+        media.addEventListener('load', done, { once: true });
+        media.addEventListener('error', done, { once: true });
       });
     };
     const waitForHeroIntroImageReady = () => {
