@@ -3329,9 +3329,15 @@ function initHeroAnimation() {
 // ================================================================================
 // 🎬 HERO VIDEO PARALLAX (data-hero="video")
 // ================================================================================
-// Scroll-triggered parallax for the video-only hero used on the test homepage
-// variant. Translates the hero element down as the page scrolls up, so the hero
-// appears to lag behind the page's upward motion — a subtle "lingering" parallax-out.
+// Scroll-triggered parallax for the fixed video hero on the test homepage variant.
+// As the user scrolls, the hero translates UP — same direction as page scroll —
+// but only by a small fraction of the scroll distance, so the next section appears
+// to slide over the hero while the hero drifts up slowly. Mirrors the lingering
+// feel of the original scroll-card scrub animation, just with a static video.
+//
+// The trigger rides on the hero's scroll spacer (data-fixed-trigger="hero" or one
+// of the equivalent attributes used by initFixedSectionSorting). The hero itself
+// is position:fixed so its own bounding rect can't drive scroll progress.
 //
 // No-op when [data-hero="video"] is not present, so the original homepage with the
 // scroll-card scrub animation is completely unaffected.
@@ -3346,16 +3352,24 @@ function initHeroVideoParallax() {
     gsap.registerPlugin(ScrollTrigger);
   }
 
-  // Hero translates DOWN as the page scrolls UP — net effect: appears to move up
-  // ~15vh slower than scroll across its own height, creating the "delayed" feel.
-  // scrub: 0.6 adds a small catch-up smoothing so motion isn't pixel-locked to scroll.
+  // Find the matching scroll spacer for the hero. Same attribute set used by
+  // initFixedSectionSorting() so we stay consistent with the page's existing
+  // pinned-section system.
+  const spacer = document.querySelector(
+    '[data-fixed-trigger="hero"], [data-section-trigger="hero"], [data-section-spacer="hero"], [data-section-scroll="hero"]'
+  );
+  const triggerEl = spacer || hero;
+
+  // Translate UP by 15vh across the spacer's full scroll length. Same direction
+  // as everything else, but ~15% of the scroll velocity, so the hero drifts up
+  // gently while the page rises past it. scrub: 0.6 = small catch-up smoothing.
   gsap.fromTo(hero,
     { y: 0 },
     {
-      y: '15vh',
+      y: '-15vh',
       ease: 'none',
       scrollTrigger: {
-        trigger: hero,
+        trigger: triggerEl,
         start: 'top top',
         end: 'bottom top',
         scrub: 0.6,
@@ -3364,7 +3378,7 @@ function initHeroVideoParallax() {
     }
   );
 
-  console.log('🎬 Hero video parallax initialized');
+  console.log('🎬 Hero video parallax initialized (trigger=' + (spacer ? 'spacer' : 'hero') + ')');
 }
 
 // Try to start auto-scroll if DOM is already loaded (for direct page loads)
