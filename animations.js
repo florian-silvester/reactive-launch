@@ -2138,6 +2138,53 @@ function loadTextPluginOnce() {
   });
 }
 
+function loadSplitTextOnce() {
+  return new Promise((resolve, reject) => {
+    if (typeof gsap === 'undefined') { reject('GSAP not loaded'); return; }
+    const getPlugin = () => window.SplitText || window.gsap?.plugins?.SplitText;
+    const existing = getPlugin();
+    if (existing) {
+      gsap.registerPlugin(existing);
+      resolve();
+      return;
+    }
+
+    const version = gsap.version || '3.13.0';
+    const sources = [
+      `https://cdnjs.cloudflare.com/ajax/libs/gsap/${version}/SplitText.min.js`,
+      'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/SplitText.min.js',
+      `https://cdn.jsdelivr.net/npm/gsap@${version}/dist/SplitText.min.js`,
+      'https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/SplitText.min.js'
+    ];
+    let sourceIndex = 0;
+
+    const tryNextSource = () => {
+      const src = sources[sourceIndex];
+      sourceIndex += 1;
+      if (!src) {
+        reject('Failed to load SplitText');
+        return;
+      }
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => {
+        const plugin = getPlugin();
+        if (plugin) {
+          gsap.registerPlugin(plugin);
+          console.log('✅ SplitText loaded and registered');
+          resolve();
+        } else {
+          tryNextSource();
+        }
+      };
+      s.onerror = tryNextSource;
+      document.head.appendChild(s);
+    };
+
+    tryNextSource();
+  });
+}
+
 function injectHeroScrollGuardStyles() {
   if (document.getElementById('hero-scroll-guard-styles')) return;
   const style = document.createElement('style');
@@ -2599,26 +2646,39 @@ function initScrubTypeText() {
   }).catch(err => console.error('⌨️ scrub-type-text:', err));
 }
 
+// ================================================================================
+// ⌨️  HEADER TYPEWRITER  (data-header="type")
+// ================================================================================
+// Non-destructive typewriter using GSAP SplitText (free since GSAP 3.13, April 2024).
+//
+// Unlike the previous TextPlugin-based implementation, this one does NOT mutate the
+// host heading element:
+//   • Its `display`, `white-space`, and other CSS are left alone — Lumos's
+//     `display: flow-root` line-height-trim keeps working.
+//   • Nested markup like <strong> is preserved — `.u-heading-accent strong { … }`
+//     and similar accent rules still apply both during and after the reveal.
+//   • The heading's natural block sizing is unchanged — max-width / container
+//     constraints are respected.
+//
+// SplitText wraps each character in its own inline-block child, leaving everything
+// above untouched. On cleanup we call split.revert() which restores the original DOM
+// byte-for-byte.
 function initHeaderTypeText() {
   if (typeof gsap === 'undefined') return;
 
+  // Clean up previous run (revert splits, kill triggers/timelines).
   if (window.headerTypeTextState) {
     const oldState = window.headerTypeTextState;
     oldState.triggers?.forEach((trigger) => trigger.kill());
     oldState.timelines?.forEach((timeline) => timeline.kill());
-    oldState.targets?.forEach(({ target, originalText, originalWhiteSpace, originalDisplay }) => {
-      target.textContent = originalText;
-      target.style.whiteSpace = originalWhiteSpace;
-      target.style.display = originalDisplay;
-      gsap.set(target, { clearProps: 'opacity,visibility' });
-    });
+    oldState.splits?.forEach((split) => { try { split.revert(); } catch (e) {} });
     oldState.wrappers?.forEach((wrapper) => {
       gsap.set(wrapper, { clearProps: 'opacity,visibility' });
     });
   }
 
   const wrappers = Array.from(document.querySelectorAll('[data-header="type"]'));
-  const state = { triggers: [], timelines: [], targets: [], wrappers: [] };
+  const state = { triggers: [], timelines: [], splits: [], wrappers: [] };
   window.headerTypeTextState = state;
 
   const runId = (window.headerTypeTextRunId || 0) + 1;
@@ -2629,79 +2689,63 @@ function initHeaderTypeText() {
   const textTargetSelector = 'h1, h2, h3, h4, h5, h6, p, [data-text-target]';
   const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+  // Find the deepest text-bearing element(s) inside each wrapper.
   const getTextTargets = (wrapper) => {
-    const candidates = Array.from(wrapper.querySelectorAll(textTargetSelector)).filter((target) => {
-      return (target.textContent || '').trim().length > 0;
-    });
-    const leafTargets = candidates.filter((target) => {
-      return !candidates.some((candidate) => candidate !== target && target.contains(candidate));
-    });
-
+    const candidates = Array.from(wrapper.querySelectorAll(textTargetSelector))
+      .filter((target) => (target.textContent || '').trim().length > 0);
+    const leafTargets = candidates.filter((target) =>
+      !candidates.some((other) => other !== target && target.contains(other))
+    );
     return leafTargets.length > 0 ? leafTargets : [wrapper];
   };
 
   const wrapperItems = wrappers.map((wrapper) => {
-    const targets = getTextTargets(wrapper).map((target) => {
-      target.querySelectorAll('[data-header-type-layer]').forEach((layer) => layer.remove());
-      if ((target.textContent || '').trim().length === 0 && target.dataset.headerTypeOriginal) {
-        target.textContent = target.dataset.headerTypeOriginal;
-      }
-      const originalText = target.textContent || '';
-      target.dataset.headerTypeOriginal = originalText;
-      return {
-        target,
-        originalText,
-        originalWhiteSpace: target.style.whiteSpace,
-        originalDisplay: target.style.display,
-        typeLayer: null
-      };
-    }).filter((item) => item.originalText.trim().length > 0);
-
-    targets.forEach((item) => state.targets.push(item));
+    const targets = getTextTargets(wrapper);
     state.wrappers.push(wrapper);
-
     return { wrapper, targets };
   }).filter((item) => item.targets.length > 0);
 
   if (wrapperItems.length === 0) return;
 
+  // Reduced motion: just show the headings, no animation, no DOM mutation.
   if (prefersReducedMotion) {
-    wrapperItems.forEach(({ wrapper, targets }) => {
+    wrapperItems.forEach(({ wrapper }) => {
       gsap.set(wrapper, { autoAlpha: 1 });
-      targets.forEach(({ target, originalText }) => {
-        target.textContent = originalText;
-      });
     });
     return;
   }
 
-  Promise.all([loadScrollTriggerOnce(), loadTextPluginOnce()]).then(() => {
+  Promise.all([loadScrollTriggerOnce(), loadSplitTextOnce()]).then(() => {
     if (window.headerTypeTextRunId !== runId) return;
 
     wrapperItems.forEach(({ targets }, wrapperIndex) => {
-      targets.forEach((item, targetIndex) => {
-        const { target, originalText } = item;
-        const stableLayer = document.createElement('span');
-        const typeLayer = document.createElement('span');
+      targets.forEach((target, targetIndex) => {
+        if ((target.textContent || '').trim().length === 0) return;
 
-        target.textContent = '';
-        target.style.display = 'grid';
-        target.style.whiteSpace = 'pre-wrap';
-        stableLayer.textContent = originalText;
-        stableLayer.dataset.headerTypeLayer = 'stable';
-        stableLayer.setAttribute('aria-hidden', 'true');
-        stableLayer.style.gridArea = '1 / 1';
-        stableLayer.style.visibility = 'hidden';
-        stableLayer.style.whiteSpace = 'pre-wrap';
-        typeLayer.dataset.headerTypeLayer = 'typed';
-        typeLayer.setAttribute('aria-hidden', 'true');
-        typeLayer.style.gridArea = '1 / 1';
-        typeLayer.style.whiteSpace = 'pre-wrap';
-        typeLayer.style.pointerEvents = 'none';
-        target.appendChild(stableLayer);
-        target.appendChild(typeLayer);
-        item.typeLayer = typeLayer;
+        // Non-destructive split. SplitText preserves nested <strong>/<em>/etc.,
+        // wraps each visible character in an inline-block <div class="char">,
+        // and leaves the host element's own styles + classes untouched.
+        let split;
+        try {
+          split = SplitText.create(target, {
+            type: 'chars',
+            charsClass: 'header-type__char',
+            // No mask — we don't want clipping; we want each char to honor any
+            // accent <strong> rules inherited from its ancestors.
+          });
+        } catch (e) {
+          console.warn('⌨️ header-type-text: SplitText.create failed', e);
+          return;
+        }
+        state.splits.push(split);
 
+        const chars = split.chars || [];
+        if (chars.length === 0) return;
+
+        // Hide every character; reveal them in sequence to produce the typing feel.
+        gsap.set(chars, { autoAlpha: 0 });
+
+        const charPace = 0.025; // ~40 chars/sec
         const tl = gsap.timeline({
           scrollTrigger: {
             trigger: target,
@@ -2712,27 +2756,20 @@ function initHeaderTypeText() {
             refreshPriority: 30 + wrapperIndex + targetIndex * 0.01
           }
         });
-        const typeDuration = Math.min(0.55, Math.max(0.24, originalText.trim().length * 0.018));
-        const steps = Math.min(28, Math.max(8, originalText.trim().length));
 
-        gsap.set(typeLayer, { autoAlpha: 0 });
-        tl.to(typeLayer, { autoAlpha: 1, duration: 0.16, ease: 'power2.out' }, 0)
-          .to(typeLayer, {
-            text: originalText,
-            duration: typeDuration,
-            ease: `steps(${steps})`,
-            onStart: () => {
-              typeLayer.textContent = '';
-            },
-            onComplete: () => {
-              typeLayer.textContent = originalText;
-            }
-          }, '<0.04');
+        tl.to(chars, {
+          autoAlpha: 1,
+          duration: 0.01,        // effectively instant per character → typed feel, not faded
+          ease: 'none',
+          stagger: charPace
+        });
+
+        // If already in view at init, force-play (matches old behavior).
         requestAnimationFrame(() => {
           const rect = target.getBoundingClientRect();
-          const hasReachedTrigger = rect.top <= window.innerHeight * 0.85;
-          if (hasReachedTrigger && tl.progress() === 0) tl.play();
+          if (rect.top <= window.innerHeight * 0.85 && tl.progress() === 0) tl.play();
         });
+
         state.timelines.push(tl);
         if (tl.scrollTrigger) state.triggers.push(tl.scrollTrigger);
       });
