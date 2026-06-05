@@ -2725,11 +2725,18 @@ function initHeaderTypeText() {
         // Non-destructive split. SplitText preserves nested <strong>/<em>/etc.,
         // wraps each visible character in an inline-block <div class="char">,
         // and leaves the host element's own styles + classes untouched.
+        //
+        // type: 'words, chars' is important — without the words layer, individual
+        // chars are independent inline-block boxes and the browser can break a
+        // line mid-word ("softwar" / "e"). Wrapping each word first turns the
+        // word into a single unbreakable unit; chars only animate, they don't
+        // affect wrapping.
         let split;
         try {
           split = SplitText.create(target, {
-            type: 'chars',
+            type: 'words, chars',
             charsClass: 'header-type__char',
+            wordsClass: 'header-type__word',
             // No mask — we don't want clipping; we want each char to honor any
             // accent <strong> rules inherited from its ancestors.
           });
