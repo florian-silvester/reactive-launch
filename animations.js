@@ -3030,10 +3030,12 @@ function initHeroAnimation() {
         });
       }
       if (svgHeader) {
+        // No intro slide — the heading reveals via its own typewriter
+        // (data-header="type"). Only fade is kept (coordinated with the curtain);
+        // the y-translate was competing with the typing animation.
         gsap.set(svgHeader, {
           autoAlpha: 0,
-          y: () => window.innerHeight * 0.12,
-          willChange: 'transform, opacity'
+          willChange: 'opacity'
         });
       }
       if (heroImgWrap) {
@@ -3074,7 +3076,6 @@ function initHeroAnimation() {
       if (svgHeader) {
         introTl.to(svgHeader, {
           autoAlpha: 1,
-          y: 0,
           duration: 0.85
         }, 0.22);
       }
