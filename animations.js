@@ -90,8 +90,12 @@ if (!window.barbaInitialized) {
         if (smoothScrollTween) smoothScrollTween.kill();
         smoothScrollTween = gsap.to(window, {
           scrollTo: { y: targetY, autoKill: false },
-          duration: 0.6,
-          ease: 'power3.out',
+          // duration 0.25 (was 0.6) + power2.out (was power3.out): the wheel is
+          // hijacked and re-animated, so a long, hard-decelerating tween read as
+          // the page "resisting" the scroll. A shorter, gentler ease keeps a hint
+          // of smoothing without fighting the user's input.
+          duration: 0.25,
+          ease: 'power2.out',
           overwrite: 'auto'
         });
       };
@@ -2612,7 +2616,10 @@ function initScrubTypeText() {
           trigger,
           start: 'top center',
           end: () => `+=${window.innerHeight * 1.6}`,
-          scrub: 1,
+          // scrub: 0.3 (was 1) — tight tracking. A full second of catch-up made
+          // the reveal trail behind the scroll and feel "laggy/confused"; 0.3
+          // keeps a touch of smoothing while staying glued to the scroll position.
+          scrub: 0.3,
           invalidateOnRefresh: true,
           refreshPriority: 20 + index
         }
@@ -2638,7 +2645,21 @@ function initScrubTypeText() {
         }, overlayDelay);
         state.overlays.push(overlay);
       }
-      tl.to(words, { opacity: 0, duration: 0.6, ease: 'none' }, textRevealDuration + 0.2);
+
+      // Reveal → HOLD (readable) → disappear. The disappear is intentional (the
+      // text clears to make room for the next section), but previously the
+      // readable plateau was a near-zero instant: the fade started ~0.2s after the
+      // last word, so fast scrolls skipped straight from "typing" to "gone".
+      //
+      // We now insert an explicit hold where nothing animates — the fully-typed
+      // text just sits readable for a generous chunk of the scroll range — and
+      // only then fade it out. Result: reveal ≈35%, hold ≈50%, fade ≈15% of the
+      // scroll distance. Fast scrolls land in the wide readable middle; only
+      // scrolling all the way past (genuinely leaving the section) reaches the
+      // intended empty end state.
+      const holdDuration = Math.max(0.8, textRevealDuration * 1.4);
+      const fadeDuration = Math.max(0.4, textRevealDuration * 0.4);
+      tl.to(words, { opacity: 0, duration: fadeDuration, ease: 'none' }, textRevealDuration + holdDuration);
 
       state.timelines.push(tl);
       if (tl.scrollTrigger) state.triggers.push(tl.scrollTrigger);
@@ -3431,7 +3452,9 @@ function initHeroVideoParallax() {
 
   // Translate UP by 15vh across the spacer's full scroll length. Same direction
   // as everything else, but ~15% of the scroll velocity, so the hero drifts up
-  // gently while the page rises past it. scrub: 0.6 = small catch-up smoothing.
+  // gently while the page rises past it. scrub: 0.2 (was 0.6) — tighter tracking
+  // so the video follows the scroll closely instead of lagging behind it, which
+  // compounded with the smooth-scroll easing into a "resisting" feel.
   gsap.fromTo(hero,
     { y: 0 },
     {
@@ -3441,7 +3464,7 @@ function initHeroVideoParallax() {
         trigger: triggerEl,
         start: 'top top',
         end: 'bottom top',
-        scrub: 0.6,
+        scrub: 0.2,
         invalidateOnRefresh: true,
       },
     }
