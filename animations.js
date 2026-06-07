@@ -1038,8 +1038,9 @@ function initTextType() {
     pairs.forEach(({ category, value }) => {
       const cleanCategory = normalizeText(category);
       const cleanValue = normalizeText(value);
-      const categoryDuration = Math.max(0.25, cleanCategory.length * 0.02);
-      const valueDuration = Math.max(0.25, cleanValue.length * 0.015);
+      // 30% faster typing (durations ×0.7): coeff 0.02→0.014, 0.015→0.0105, floor 0.25→0.175
+      const categoryDuration = Math.max(0.175, cleanCategory.length * 0.014);
+      const valueDuration = Math.max(0.175, cleanValue.length * 0.0105);
       tl.to(categoryTarget, {
         text: cleanCategory,
         duration: categoryDuration,
@@ -2495,7 +2496,8 @@ function initHeroLoadText(scene) {
 
   textItems.forEach(({ target, typeLayer, originalText }, index) => {
     const startAt = index === 0 ? 0 : '>-0.05';
-    const typeDuration = Math.min(0.55, Math.max(0.24, originalText.trim().length * 0.018));
+    // 30% faster typing (durations ×0.7): coeff 0.018→0.0126, bounds 0.24→0.168, 0.55→0.385
+    const typeDuration = Math.min(0.385, Math.max(0.168, originalText.trim().length * 0.0126));
     const steps = Math.min(28, Math.max(8, originalText.trim().length));
 
     tl.to(target, { autoAlpha: 1, duration: 0.16, ease: 'power2.out' }, startAt)
@@ -2773,7 +2775,7 @@ function initHeaderTypeText() {
         // Hide every character; reveal them in sequence to produce the typing feel.
         gsap.set(chars, { autoAlpha: 0 });
 
-        const charPace = 0.025; // ~40 chars/sec
+        const charPace = 0.0175; // 30% faster (was 0.025) → ~57 chars/sec
         const tl = gsap.timeline({
           scrollTrigger: {
             trigger: target,
