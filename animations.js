@@ -360,6 +360,11 @@ if (!window.barbaInitialized) {
             initFixedSectionSorting();
           }, 720);
 
+          // Initialize accordion+tabs combo sections
+          setTimeout(() => {
+            initAccordionTabsCombo();
+          }, 715);
+
           // Initialize scroll-triggered typing text
           setTimeout(() => {
             initScrubTypeText();
@@ -430,6 +435,7 @@ if (!window.barbaInitialized) {
     setTimeout(() => {
       initScrubTypeText();
       initHeaderTypeText();
+      initAccordionTabsCombo();
     }, 1230);
 
     // Transition-1 exit animation on initial load
@@ -3477,6 +3483,246 @@ function initHeroVideoParallax() {
 }
 
 // ================================================================================
+// 🪗 ACCORDION+TABS COMBO (data-section="accordion")
+// ================================================================================
+// Combined Lumos accordion + tabs controller, formerly a Webflow embed. Accordion
+// toggles drive the tab panels; an autoplay loop advances items via --progress on
+// the .tab_wrap (the Lumos progress line reads it). Reads the same data attributes
+// as the stock tab component (data-autoplay-duration, data-duration,
+// data-pause-on-hover). Claims the wraps (scriptInitialized) so the stock Lumos
+// tab/accordion embeds skip these sections; they keep serving the rest of the site.
+//
+// Behavior: one item always open; click = open + hold loop 5s, then resume;
+// keyboard focus pauses the loop (focus-visible only); loop pauses off-screen and
+// while the next sticky section covers this one (scanner line fades out in place,
+// resumes on reveal). No-op when [data-section="accordion"] is absent.
+const COMBO_RESUME_DELAY_MS = 5000;
+
+function claimComboSections() {
+  document.querySelectorAll(
+    '[data-section="accordion"] .tab_wrap, [data-section="accordion"] .accordion_wrap'
+  ).forEach((w) => { w.dataset.scriptInitialized = 'true'; });
+}
+
+function injectComboStyles() {
+  if (document.getElementById('accordion-tabs-combo-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'accordion-tabs-combo-styles';
+  style.textContent = `
+    /* Stabilize panels: hide all; pre-JS show first (no flash, no pile-up) */
+    [data-section="accordion"] .tab_content_list > * { display: none; }
+    [data-section="accordion"] .tab_content_list:not([data-combo-init]) > :first-child { display: block; }
+
+    /* Accordion bodies start closed; JS animates height */
+    [data-section="accordion"] .accordion_content_wrap { overflow: hidden; }
+
+    /* Progress line on the TOP edge (items carry border-top), scanner gradient:
+       bright head at the moving edge fading to transparent behind, and an
+       opacity transition so the cover-pause can fade it out without rewinding. */
+    [data-section="accordion"] .tab_button_line {
+      inset: 0% auto auto 0%;
+      transform: translate(0, -100%);
+      background-color: transparent;
+      background-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, currentColor 30%, transparent) 55%,
+        currentColor 100%
+      );
+      transition: opacity 0.4s ease;
+    }
+    [data-section="accordion"] .tab_wrap.is-covered .tab_button_line { opacity: 0; }
+  `;
+  document.head.appendChild(style);
+}
+
+function initAccordionTabsCombo() {
+  if (typeof gsap === 'undefined') return;
+  claimComboSections();
+  injectComboStyles();
+
+  document.querySelectorAll('[data-section="accordion"]').forEach((section) => {
+    if (section.dataset.comboInit) return;
+    section.dataset.comboInit = 'true';
+
+    const wrap = section.querySelector('.tab_wrap') || section;
+    const autoplaySecs = parseFloat(wrap.getAttribute('data-autoplay-duration')) || 0;
+    const dur = parseFloat(wrap.getAttribute('data-duration')) || 0.3;
+    const pauseOnHover = wrap.getAttribute('data-pause-on-hover') === 'true';
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const items = Array.from(section.querySelectorAll('.accordion_item'));
+    const panelList = section.querySelector('.tab_content_list');
+    const panels = panelList ? Array.from(panelList.children) : [];
+    if (!items.length || !panels.length) {
+      console.warn('🪗 combo: missing items/panels', section);
+      return;
+    }
+    if (items.length !== panels.length) {
+      console.warn(`🪗 combo: ${items.length} items vs ${panels.length} panels — extras ignored`);
+    }
+    const count = Math.min(items.length, panels.length);
+    panelList.setAttribute('data-combo-init', 'true');
+
+    let active = -1;
+    const refreshST = () => { if (typeof ScrollTrigger !== 'undefined') ScrollTrigger.refresh(); };
+
+    const units = items.slice(0, count).map((item, i) => {
+      const btn = item.querySelector('.accordion_toggle_button');
+      const content = item.querySelector('.accordion_content_wrap');
+      const outer = item.closest('.tab_button_item') || item;
+      if (btn && content) {
+        btn.setAttribute('aria-expanded', 'false');
+        btn.id = btn.id || `combo-btn-${i}`;
+        content.id = content.id || `combo-content-${i}`;
+        btn.setAttribute('aria-controls', content.id);
+        content.setAttribute('aria-labelledby', btn.id);
+        content.style.display = 'none';
+      }
+      let tl = null;
+      if (content) {
+        // Accordion gets its own timing: slower than the panel fade, stronger
+        // S-curve, so open/close feels cushioned instead of abrupt.
+        const accDur = Math.max(dur * 2, 0.45);
+        tl = gsap.timeline({
+          paused: true,
+          defaults: { duration: accDur, ease: 'power2.inOut' },
+          onComplete: refreshST,
+          onReverseComplete: refreshST
+        });
+        tl.set(content, { display: 'block' });
+        tl.fromTo(content, { height: 0 }, { height: 'auto' });
+      }
+      return { item, outer, btn, content, tl };
+    });
+
+    function showPanel(i, prev) {
+      const cur = panels[i];
+      const old = panels[prev];
+      if (!reduced && old && old !== cur) {
+        gsap.timeline({ defaults: { duration: dur, ease: 'power1.out' } })
+          .to(old, { opacity: 0 })
+          .set(old, { display: 'none' })
+          .set(cur, { display: 'block' })
+          .fromTo(cur, { opacity: 0 }, { opacity: 1 });
+      } else {
+        if (old && old !== cur) old.style.display = 'none';
+        cur.style.display = 'block';
+        cur.style.opacity = 1;
+      }
+    }
+
+    function activate(i, instant, fromUser) {
+      if (i === active) { fromUser ? holdThenResume() : startProgress(); return; }
+      const prev = active;
+      active = i;
+      units.forEach((u, j) => {
+        const on = j === i;
+        u.outer.classList.toggle('is-active', on);
+        u.item.classList.toggle('is-active', on);
+        if (u.btn) u.btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+        if (u.tl) { on ? (instant ? u.tl.progress(1) : u.tl.play()) : u.tl.reverse(); }
+        else if (u.content) u.content.style.display = on ? 'block' : 'none';
+      });
+      showPanel(i, prev);
+      fromUser ? holdThenResume() : startProgress();
+    }
+
+    // ---- autoplay loop via --progress on the wrap ----
+    let progressTween = null;
+    let resumeTimer = null;
+    let hovered = false;
+    let focused = false;
+    let inView = true;
+    let covered = false;
+
+    function canRun() {
+      return autoplaySecs > 0 && !reduced && inView && !hovered && !focused && !covered;
+    }
+    function startProgress() {
+      clearTimeout(resumeTimer);
+      if (progressTween) progressTween.kill();
+      if (!canRun()) { wrap.style.setProperty('--progress', 0); return; }
+      progressTween = gsap.fromTo(wrap, { '--progress': 0 }, {
+        '--progress': 1,
+        ease: 'none',
+        duration: autoplaySecs,
+        onComplete: () => { activate((active + 1) % count); }
+      });
+    }
+    // User clicked: hold the loop, then resume from zero.
+    function holdThenResume() {
+      clearTimeout(resumeTimer);
+      if (progressTween) progressTween.kill();
+      wrap.style.setProperty('--progress', 0);
+      resumeTimer = setTimeout(startProgress, COMBO_RESUME_DELAY_MS);
+    }
+    function updateAuto() {
+      if (canRun()) startProgress();
+      else if (progressTween) progressTween.pause();
+    }
+
+    units.forEach((u, i) => {
+      u.outer.addEventListener('click', () => { activate(i, false, true); });
+      u.outer.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); activate((active + 1) % count, false, true); }
+        if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); activate((active - 1 + count) % count, false, true); }
+      });
+    });
+    if (pauseOnHover) {
+      wrap.addEventListener('mouseenter', () => { hovered = true; updateAuto(); });
+      wrap.addEventListener('mouseleave', () => { hovered = false; updateAuto(); });
+    }
+    // Pause only for KEYBOARD focus (:focus-visible) — mouse clicks shouldn't
+    // permanently kill the loop; they trigger the hold instead.
+    wrap.addEventListener('focusin', (e) => {
+      focused = e.target.matches(':focus-visible');
+      updateAuto();
+    });
+    wrap.addEventListener('focusout', (e) => {
+      if (!e.relatedTarget || !wrap.contains(e.relatedTarget)) { focused = false; updateAuto(); }
+    });
+    new IntersectionObserver((entries) => {
+      inView = entries[0].isIntersecting;
+      updateAuto();
+    }, { threshold: 0 }).observe(wrap);
+
+    // ---- stop the loop while the NEXT sticky section covers this one ----
+    // Freeze progress in place and FADE the line out via the is-covered class
+    // (rewinding the width reads as "reversing"). Fires once the incoming
+    // section is 25% into the viewport; on reveal the line fades back in and
+    // the loop restarts from zero while still transparent (no visible jump).
+    const stickySections = Array.from(document.querySelectorAll('.u-section.u-position-sticky'));
+    const selfIdx = stickySections.indexOf(section);
+    const nextSection = selfIdx >= 0 ? (stickySections[selfIdx + 1] || null) : null;
+    if (nextSection) {
+      new IntersectionObserver((entries) => {
+        const nowCovered = entries[0].isIntersecting;
+        if (nowCovered === covered) return;
+        covered = nowCovered;
+        if (covered) {
+          clearTimeout(resumeTimer);
+          if (progressTween) progressTween.pause();   // freeze — CSS fades the line
+          wrap.classList.add('is-covered');
+        } else {
+          wrap.classList.remove('is-covered');        // fades back in
+          startProgress();                            // fresh cycle from zero
+        }
+      }, { threshold: 0, rootMargin: '0px 0px -25% 0px' }).observe(nextSection);
+    }
+
+    activate(0, true);   // first item open, first panel shown, loop starts
+    console.log('🪗 combo: initialized', count, 'items');
+  });
+}
+
+// Claim combo sections at script-execution time. animations.js loads in the
+// footer (after the sections), while the stock Lumos embeds register
+// DOMContentLoaded listeners during parse — claiming synchronously here wins
+// the race regardless of listener order.
+try { claimComboSections(); } catch (e) { /* DOM not ready in exotic loads */ }
+
+// ================================================================================
 // 🃏 STICKY SECTION OVERLAYS (sticky-section="wrapper" + data-overlay)
 // ================================================================================
 // Stacked-cards dimming: inside a wrapper marked sticky-section="wrapper", each
@@ -3580,6 +3826,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initScrubTypeText();
   initHeaderTypeText();
   initStickySectionOverlays();
+  initAccordionTabsCombo();
 } else {
   document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM Content Loaded (standalone), initializing auto-scroll...');
@@ -3595,5 +3842,6 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     initScrubTypeText();
     initHeaderTypeText();
     initStickySectionOverlays();
+    initAccordionTabsCombo();
   });
 }
