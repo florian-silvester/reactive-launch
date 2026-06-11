@@ -363,6 +363,7 @@ if (!window.barbaInitialized) {
           // Initialize accordion+tabs combo sections
           setTimeout(() => {
             initAccordionTabsCombo();
+            initHeroTypeSequence();
           }, 715);
 
           // Initialize scroll-triggered typing text
@@ -436,6 +437,7 @@ if (!window.barbaInitialized) {
       initScrubTypeText();
       initHeaderTypeText();
       initAccordionTabsCombo();
+      initHeroTypeSequence();
     }, 1230);
 
     // Transition-1 exit animation on initial load
@@ -3723,6 +3725,105 @@ function initAccordionTabsCombo() {
 try { claimComboSections(); } catch (e) { /* DOM not ready in exotic loads */ }
 
 // ================================================================================
+// ⌨️ HERO TYPE SEQUENCE (data-type-sequence="Phrase one|Phrase two")
+// ================================================================================
+// One-shot typewriter sequence for hero headlines:
+//   1. starts EMPTY (styles injected at script execution hide the wrapper so the
+//      full text never flashes before the animation),
+//   2. types the first phrase,
+//   3. holds (data-type-hold seconds, default 3),
+//   4. morphs to the next phrase: backspaces to the common beginning of the two
+//      phrases, then types the differing rest. "Reactive Dynamics|Reactive Squad"
+//      keeps "Reactive ", deletes "Dynamics", types "Squad".
+// Multiple phrases allowed (a|b|c). Final phrase stays. Reduced motion shows the
+// final phrase immediately. Plain textContent typing — no SplitText/CDN wait, so
+// it starts instantly and there is no FOUC window.
+function injectTypeSequenceStyles() {
+  if (document.getElementById('hero-type-sequence-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'hero-type-sequence-styles';
+  style.textContent = '[data-type-sequence] { visibility: hidden; }';
+  document.head.appendChild(style);
+}
+
+function initHeroTypeSequence() {
+  const wrappers = Array.from(document.querySelectorAll('[data-type-sequence]'));
+  if (wrappers.length === 0) return;
+  injectTypeSequenceStyles();
+
+  const TYPE_MS = 45;          // per character while typing
+  const DELETE_MS = 28;        // per character while deleting (faster, like real backspace)
+  const START_DELAY_MS = 350;  // small beat after reveal before typing starts
+
+  wrappers.forEach((wrapper) => {
+    if (wrapper.dataset.typeSequenceInit === 'true') return;
+    wrapper.dataset.typeSequenceInit = 'true';
+
+    const target = wrapper.querySelector('h1, h2, h3, h4, h5, h6, p, [data-text-target]') || wrapper;
+    const phrases = (wrapper.getAttribute('data-type-sequence') || '')
+      .split('|').map((s) => s.trim()).filter(Boolean);
+    const holdMs = (parseFloat(wrapper.getAttribute('data-type-hold')) || 3) * 1000;
+
+    if (phrases.length === 0) {
+      wrapper.style.visibility = 'visible';
+      return;
+    }
+
+    // Reserve one line of height so the empty heading doesn't collapse and
+    // shift the layout when typing begins.
+    target.style.minHeight = '1lh';
+    target.textContent = '';
+    wrapper.style.visibility = 'visible';
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      target.textContent = phrases[phrases.length - 1];
+      return;
+    }
+
+    let current = '';
+    let timer = null;
+    const setText = (t) => { target.textContent = t; };
+
+    const commonPrefixLen = (a, b) => {
+      let n = 0;
+      const m = Math.min(a.length, b.length);
+      while (n < m && a[n] === b[n]) n++;
+      return n;
+    };
+    const typeOut = (toStr, done) => {
+      if (current.length < toStr.length) {
+        current = toStr.slice(0, current.length + 1);
+        setText(current);
+        timer = setTimeout(() => typeOut(toStr, done), TYPE_MS);
+      } else done();
+    };
+    const deleteTo = (len, done) => {
+      if (current.length > len) {
+        current = current.slice(0, -1);
+        setText(current);
+        timer = setTimeout(() => deleteTo(len, done), DELETE_MS);
+      } else done();
+    };
+    const run = (idx) => {
+      const phrase = phrases[idx];
+      deleteTo(commonPrefixLen(current, phrase), () => {
+        typeOut(phrase, () => {
+          if (idx < phrases.length - 1) {
+            timer = setTimeout(() => run(idx + 1), holdMs);
+          }
+        });
+      });
+    };
+
+    timer = setTimeout(() => run(0), START_DELAY_MS);
+  });
+}
+
+// Hide sequence headlines immediately at script execution — before first paint
+// of anything below the footer scripts — so the full text never flashes.
+try { injectTypeSequenceStyles(); } catch (e) { /* DOM not ready in exotic loads */ }
+
+// ================================================================================
 // 🃏 STICKY SECTION OVERLAYS (sticky-section="wrapper" + data-overlay)
 // ================================================================================
 // Stacked-cards dimming: inside a wrapper marked sticky-section="wrapper", each
@@ -3827,6 +3928,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initHeaderTypeText();
   initStickySectionOverlays();
   initAccordionTabsCombo();
+  initHeroTypeSequence();
 } else {
   document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM Content Loaded (standalone), initializing auto-scroll...');
@@ -3843,5 +3945,6 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     initHeaderTypeText();
     initStickySectionOverlays();
     initAccordionTabsCombo();
+    initHeroTypeSequence();
   });
 }
