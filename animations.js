@@ -3512,11 +3512,17 @@ function initStickySectionOverlays() {
       if (wrapper.dataset.stickyOverlayInit === 'true') return;
       wrapper.dataset.stickyOverlayInit = 'true';
 
-      // Prefer explicitly tagged sections (sticky-section="section") at any
-      // depth; fall back to the wrapper's direct children.
+      // Section discovery, most explicit first:
+      // 1. tagged sticky-section="section" (any depth)
+      // 2. Lumos sticky sections (.u-section.u-position-sticky) — no tagging
+      //    needed, useful when the section's attribute slots are already used
+      // 3. the wrapper's direct children
       let sections = Array.from(wrapper.querySelectorAll(
         '[sticky-section="section"], [data-sticky-section="section"]'
       ));
+      if (sections.length === 0) {
+        sections = Array.from(wrapper.querySelectorAll('.u-section.u-position-sticky'));
+      }
       if (sections.length === 0) {
         sections = Array.from(wrapper.children).filter((el) => el.nodeType === 1);
       }
