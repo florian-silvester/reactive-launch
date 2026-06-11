@@ -3476,6 +3476,66 @@ function initHeroVideoParallax() {
   console.log('🎬 Hero video parallax initialized (trigger=' + (spacer ? 'spacer' : 'hero') + ')');
 }
 
+// ================================================================================
+// 🃏 STICKY SECTION OVERLAYS (sticky-section="wrapper" + data-overlay)
+// ================================================================================
+// Stacked-cards dimming: inside a wrapper marked sticky-section="wrapper", each
+// section that scrolls up over the previous (sticky) one drives the PREVIOUS
+// section's [data-overlay] element from opacity 0 → 0.8, scrubbed to the overlap.
+//
+// Scroll mapping per incoming section: 'top bottom' → 'top top'. That is exactly
+// the window during which the incoming section covers the stuck previous section,
+// so the dim tracks the physical overlap 1:1.
+//
+// No-op when the attribute isn't present, so other pages are unaffected.
+function initStickySectionOverlays() {
+  if (typeof gsap === 'undefined') return;
+
+  const wrappers = Array.from(document.querySelectorAll(
+    '[sticky-section="wrapper"], [data-sticky-section="wrapper"]'
+  ));
+  if (wrappers.length === 0) return;
+
+  loadScrollTriggerOnce().then(() => {
+    wrappers.forEach((wrapper) => {
+      if (wrapper.dataset.stickyOverlayInit === 'true') return;
+      wrapper.dataset.stickyOverlayInit = 'true';
+
+      const sections = Array.from(wrapper.children).filter((el) => el.nodeType === 1);
+      if (sections.length < 2) {
+        console.warn('🃏 sticky-overlays: wrapper needs at least 2 sections', wrapper);
+        return;
+      }
+
+      sections.forEach((incoming, i) => {
+        if (i === 0) return; // the first section has nothing above it to dim
+        const prevOverlay = sections[i - 1].querySelector('[data-overlay]');
+        if (!prevOverlay) return;
+
+        // Overlay should never intercept interaction with the section beneath it.
+        prevOverlay.style.pointerEvents = 'none';
+
+        gsap.fromTo(prevOverlay,
+          { opacity: 0 },
+          {
+            opacity: 0.8,
+            ease: 'none',
+            scrollTrigger: {
+              trigger: incoming,
+              start: 'top bottom',
+              end: 'top top',
+              scrub: true,
+              invalidateOnRefresh: true,
+            },
+          }
+        );
+      });
+
+      console.log('🃏 sticky-overlays: initialized', sections.length, 'sections');
+    });
+  }).catch((err) => console.error('🃏 sticky-overlays:', err));
+}
+
 // Try to start auto-scroll if DOM is already loaded (for direct page loads)
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
   console.log('📄 DOM already ready, initializing standalone auto-scroll...');
@@ -3490,6 +3550,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initFixedSectionSorting();
   initScrubTypeText();
   initHeaderTypeText();
+  initStickySectionOverlays();
 } else {
   document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM Content Loaded (standalone), initializing auto-scroll...');
@@ -3504,5 +3565,6 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     initFixedSectionSorting();
     initScrubTypeText();
     initHeaderTypeText();
+    initStickySectionOverlays();
   });
 }
