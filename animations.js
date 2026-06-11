@@ -3547,7 +3547,7 @@ function initStickySectionOverlays() {
         gsap.fromTo(overlay,
           { opacity: 0 },
           {
-            opacity: 0.8,
+            opacity: 0.9,
             ease: 'none',
             scrollTrigger: {
               trigger: incoming,
