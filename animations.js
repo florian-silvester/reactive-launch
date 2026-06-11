@@ -3496,26 +3496,49 @@ function initStickySectionOverlays() {
   ));
   if (wrappers.length === 0) return;
 
+  // Lumos component attribute slots land on display:contents wrappers, which
+  // generate no box (zero rect, opacity has no effect). Resolve down to the
+  // first descendant that actually paints. Same pattern as initFixedSectionSorting.
+  const resolveVisual = (el) => {
+    let visual = el;
+    while (visual && window.getComputedStyle(visual).display === 'contents') {
+      visual = visual.firstElementChild;
+    }
+    return visual || el;
+  };
+
   loadScrollTriggerOnce().then(() => {
     wrappers.forEach((wrapper) => {
       if (wrapper.dataset.stickyOverlayInit === 'true') return;
       wrapper.dataset.stickyOverlayInit = 'true';
 
-      const sections = Array.from(wrapper.children).filter((el) => el.nodeType === 1);
+      // Prefer explicitly tagged sections (sticky-section="section") at any
+      // depth; fall back to the wrapper's direct children.
+      let sections = Array.from(wrapper.querySelectorAll(
+        '[sticky-section="section"], [data-sticky-section="section"]'
+      ));
+      if (sections.length === 0) {
+        sections = Array.from(wrapper.children).filter((el) => el.nodeType === 1);
+      }
       if (sections.length < 2) {
-        console.warn('🃏 sticky-overlays: wrapper needs at least 2 sections', wrapper);
+        console.warn('🃏 sticky-overlays: need at least 2 sections (tag them sticky-section="section")', wrapper);
         return;
       }
 
-      sections.forEach((incoming, i) => {
+      sections.forEach((incomingRoot, i) => {
         if (i === 0) return; // the first section has nothing above it to dim
-        const prevOverlay = sections[i - 1].querySelector('[data-overlay]');
-        if (!prevOverlay) return;
+        const overlayRoot = sections[i - 1].querySelector('[data-overlay]');
+        if (!overlayRoot) {
+          console.warn('🃏 sticky-overlays: section', i - 1, 'has no [data-overlay] — skipping its dim');
+          return;
+        }
+        const overlay = resolveVisual(overlayRoot);   // paintable element
+        const incoming = resolveVisual(incomingRoot); // trigger needs a real box
 
         // Overlay should never intercept interaction with the section beneath it.
-        prevOverlay.style.pointerEvents = 'none';
+        overlay.style.pointerEvents = 'none';
 
-        gsap.fromTo(prevOverlay,
+        gsap.fromTo(overlay,
           { opacity: 0 },
           {
             opacity: 0.8,
