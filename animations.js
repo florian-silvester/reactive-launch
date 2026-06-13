@@ -3529,12 +3529,14 @@ function injectComboStyles() {
       inset: 0% auto auto 0%;
       transform: translate(0, -100%);
       background-color: transparent;
-      background-image: linear-gradient(
-        90deg,
-        transparent 0%,
-        color-mix(in srgb, currentColor 30%, transparent) 55%,
-        currentColor 100%
-      );
+      /* Fixed-length trailing streak riding the progress head, NOT a gradient
+         stretched across the whole fill. background-size sets the trail length;
+         it sits at the right edge (the head), everything behind it transparent —
+         so the indicator stays compact no matter how far along the progress is. */
+      background-image: linear-gradient(90deg, transparent, currentColor);
+      background-repeat: no-repeat;
+      background-size: 2.5rem 100%;
+      background-position: right center;
       transition: opacity 0.4s ease;
     }
 
