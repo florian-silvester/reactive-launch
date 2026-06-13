@@ -3537,7 +3537,19 @@ function injectComboStyles() {
       );
       transition: opacity 0.4s ease;
     }
-    [data-section="accordion"] .tab_wrap.is-covered .tab_button_line { opacity: 0; }
+
+    /* Progress line is LOCKED to the first item's top edge (= the start of the
+       block) instead of following the active item. A jumping line over-emphasized
+       the dividers; a fixed one reads purely as a timer. No extra element — we
+       just reuse the first item's existing line and hide all the others. */
+    [data-section="accordion"] .tab_button_line { opacity: 0 !important; }
+    [data-section="accordion"] .tab_button_line.combo-progress-anchor {
+      opacity: 1 !important;
+      width: calc(100% * var(--progress, 0)) !important;
+    }
+    [data-section="accordion"] .tab_wrap.is-covered .tab_button_line.combo-progress-anchor {
+      opacity: 0 !important;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -3602,6 +3614,10 @@ function initAccordionTabsCombo() {
       }
       return { item, outer, btn, content, tl };
     });
+
+    // Anchor the progress line to the first item's existing line (top of block).
+    const firstLine = units[0] && units[0].outer.querySelector('.tab_button_line');
+    if (firstLine) firstLine.classList.add('combo-progress-anchor');
 
     // Overlapping crossfade: the incoming panel fades in ON TOP of the outgoing
     // one, which stays in place and fully opaque underneath until covered. Because
