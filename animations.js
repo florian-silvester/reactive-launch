@@ -3587,12 +3587,13 @@ function initAccordionTabsCombo() {
       }
       let tl = null;
       if (content) {
-        // Accordion gets its own timing: slower than the panel fade, stronger
-        // S-curve, so open/close feels cushioned instead of abrupt.
-        const accDur = Math.max(dur * 2, 0.45);
+        // Accordion timing: in-out quart (power4.inOut) — slow edges, fast snappy
+        // middle, so the drawer feels dynamic rather than linear/cushioned.
+        // Duration trimmed for snap.
+        const accDur = Math.max(dur * 1.6, 0.4);
         tl = gsap.timeline({
           paused: true,
-          defaults: { duration: accDur, ease: 'power2.inOut' },
+          defaults: { duration: accDur, ease: 'power4.inOut' },
           onComplete: refreshST,
           onReverseComplete: refreshST
         });
