@@ -3515,6 +3515,10 @@ function injectComboStyles() {
     [data-section="accordion"] .tab_content_list > * { display: none; }
     [data-section="accordion"] .tab_content_list:not([data-combo-init]) > :first-child { display: block; }
 
+    /* Positioning context so the outgoing panel can overlay the incoming one
+       during the crossfade (absolute children resolve against this). */
+    [data-section="accordion"] .tab_content_list { position: relative; }
+
     /* Accordion bodies start closed; JS animates height */
     [data-section="accordion"] .accordion_content_wrap { overflow: hidden; }
 
@@ -3598,20 +3602,39 @@ function initAccordionTabsCombo() {
       return { item, outer, btn, content, tl };
     });
 
+    // Overlapping crossfade: the incoming panel fades in ON TOP of the outgoing
+    // one, which stays in place and fully opaque underneath until covered. Because
+    // the outgoing panel never goes transparent before the incoming is solid, the
+    // section background is never exposed between items — they dissolve into each
+    // other. The outgoing panel holds the layout height (stays in flow) while the
+    // incoming overlays absolutely, so nothing jumps.
+    const CROSSFADE = 0.22; // snappy
     function showPanel(i, prev) {
       const cur = panels[i];
       const old = panels[prev];
-      if (!reduced && old && old !== cur) {
-        gsap.timeline({ defaults: { duration: dur, ease: 'power1.out' } })
-          .to(old, { opacity: 0 })
-          .set(old, { display: 'none' })
-          .set(cur, { display: 'block' })
-          .fromTo(cur, { opacity: 0 }, { opacity: 1 });
-      } else {
+      if (reduced || !old || old === cur) {
         if (old && old !== cur) old.style.display = 'none';
         cur.style.display = 'block';
         cur.style.opacity = 1;
+        return;
       }
+      // Outgoing: stays in flow, opaque, underneath.
+      gsap.set(old, { display: 'block', position: 'relative', zIndex: 1, opacity: 1 });
+      // Incoming: overlays on top, starts transparent, fades in.
+      gsap.set(cur, {
+        display: 'block', position: 'absolute', top: 0, left: 0, width: '100%',
+        zIndex: 2, opacity: 0
+      });
+      gsap.to(cur, {
+        opacity: 1, duration: CROSSFADE, ease: 'power1.inOut',
+        onComplete: () => {
+          old.style.display = 'none';
+          gsap.set(old, { clearProps: 'position,zIndex,opacity' });
+          // Incoming returns to normal flow so it holds height for the next swap.
+          gsap.set(cur, { clearProps: 'position,top,left,width,zIndex,opacity' });
+          cur.style.display = 'block';
+        }
+      });
     }
 
     function activate(i, instant, fromUser) {
