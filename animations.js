@@ -365,6 +365,7 @@ if (!window.barbaInitialized) {
             initAccordionTabsCombo();
             initHeroTypeSequence();
             initTypeBuild();
+            initBackgroundParallax();
           }, 715);
 
           // Initialize scroll-triggered typing text
@@ -440,6 +441,7 @@ if (!window.barbaInitialized) {
       initAccordionTabsCombo();
       initHeroTypeSequence();
       initTypeBuild();
+      initBackgroundParallax();
     }, 1230);
 
     // Transition-1 exit animation on initial load
@@ -3052,11 +3054,9 @@ function initHeroAnimation() {
         if (navWrap) gsap.set(navWrap, { autoAlpha: 1, clipPath: 'inset(0 0% 0 0)' });
         if (svgHeader) gsap.set(svgHeader, { autoAlpha: 1, y: 0 });
         if (heroImgWrap) gsap.set(heroImgWrap, { opacity: 1, scale: 1 });
-        // Curtain OUT immediately — it must not cover the typing text (they're in
-        // different stacking contexts, so z-index can't lift the text above it).
-        // The "dark screen" comes from the dark hero section with the background
-        // video held hidden by initTypeBuild; the video then fades in at stage 2.
-        if (heroCurtain) gsap.set(heroCurtain, { autoAlpha: 0, pointerEvents: 'none' });
+        // Curtain stays BLACK at load (it sits behind the text, so the typing is
+        // visible on top of it). initTypeBuild lifts it after the first phrase.
+        if (heroCurtain) gsap.set(heroCurtain, { autoAlpha: 1, pointerEvents: 'none' });
         scene.dataset.heroIntroPlayed = 'true';
         revealInitialPaint();
         return;
@@ -4095,6 +4095,51 @@ function initTypeBuild() {
 try { injectTypeBuildStyles(); } catch (e) { /* DOM not ready in exotic loads */ }
 
 // ================================================================================
+// 🏞️ BACKGROUND IMAGE PARALLAX (data-img="background")
+// ================================================================================
+// Full-bleed cover backgrounds scroll slightly slower than the page. The image is
+// scaled up a touch so the parallax shift never exposes an edge, then translated
+// from -7% to +7% as its section passes through the viewport (scrubbed to scroll).
+// No-op when [data-img="background"] is absent.
+function initBackgroundParallax() {
+  if (typeof gsap === 'undefined') return;
+  const imgs = Array.from(document.querySelectorAll('[data-img="background"]'));
+  if (imgs.length === 0) return;
+
+  const SHIFT = 7;   // % of the element height it drifts each way
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) return;
+
+  loadScrollTriggerOnce().then(() => {
+    imgs.forEach((img) => {
+      if (img.dataset.bgParallaxInit === 'true') return;
+      img.dataset.bgParallaxInit = 'true';
+
+      // Oversize so the ±7% drift stays covered (cover images are normally exactly
+      // 100% — translating them would reveal an edge without this).
+      gsap.set(img, { scale: 1.18, transformOrigin: 'center center', willChange: 'transform' });
+
+      const trigger = img.closest('section') || img.parentElement || img;
+      gsap.fromTo(img,
+        { yPercent: -SHIFT },
+        {
+          yPercent: SHIFT,
+          ease: 'none',
+          scrollTrigger: {
+            trigger,
+            start: 'top bottom',
+            end: 'bottom top',
+            scrub: true,
+            invalidateOnRefresh: true,
+          },
+        }
+      );
+    });
+    console.log('🏞️ background parallax: initialized', imgs.length);
+  }).catch((err) => console.error('🏞️ background parallax:', err));
+}
+
+// ================================================================================
 // 🃏 STICKY SECTION OVERLAYS (sticky-section="wrapper" + data-overlay)
 // ================================================================================
 // Stacked-cards dimming: inside a wrapper marked sticky-section="wrapper", each
@@ -4201,6 +4246,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initAccordionTabsCombo();
   initHeroTypeSequence();
   initTypeBuild();
+  initBackgroundParallax();
 } else {
   document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM Content Loaded (standalone), initializing auto-scroll...');
@@ -4219,5 +4265,6 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     initAccordionTabsCombo();
     initHeroTypeSequence();
     initTypeBuild();
+    initBackgroundParallax();
   });
 }
