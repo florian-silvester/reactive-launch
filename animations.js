@@ -2731,7 +2731,11 @@ function initHeaderTypeText() {
     });
   }
 
-  const wrappers = Array.from(document.querySelectorAll('[data-header="type"]'));
+  // Skip any data-header="type" wrapper that contains a data-type-build element —
+  // that heading is driven by the type-build sequence, not the SplitText
+  // typewriter. Running both on the same <h2> made it appear-then-retype.
+  const wrappers = Array.from(document.querySelectorAll('[data-header="type"]'))
+    .filter((w) => !w.querySelector('[data-type-build]') && !w.closest('[data-type-build]'));
   const state = { triggers: [], timelines: [], splits: [], wrappers: [] };
   window.headerTypeTextState = state;
 
@@ -2746,7 +2750,8 @@ function initHeaderTypeText() {
   // Find the deepest text-bearing element(s) inside each wrapper.
   const getTextTargets = (wrapper) => {
     const candidates = Array.from(wrapper.querySelectorAll(textTargetSelector))
-      .filter((target) => (target.textContent || '').trim().length > 0);
+      .filter((target) => (target.textContent || '').trim().length > 0)
+      .filter((target) => !target.closest('[data-type-build]'));
     const leafTargets = candidates.filter((target) =>
       !candidates.some((other) => other !== target && target.contains(other))
     );
@@ -3938,7 +3943,8 @@ function initTypeBuild() {
   if (wrappers.length === 0) return;
   injectTypeBuildStyles();
 
-  const TYPE_MS = 38; // per character
+  const TYPE_MS = 55;   // per character typing (slower, readable)
+  const DELETE_MS = 28; // per character deleting (quicker backspace)
   const G = typeof gsap !== 'undefined';
 
   wrappers.forEach((wrapper) => {
@@ -3948,16 +3954,13 @@ function initTypeBuild() {
     const target = wrapper.querySelector('h1, h2, h3, h4, h5, h6, p, [data-text-target]') || wrapper;
     const phrases = (wrapper.getAttribute('data-type-build') || '')
       .split('|').map((s) => s.trim()).filter(Boolean);
-    const holdMs = (parseFloat(wrapper.getAttribute('data-type-hold')) || 0.7) * 1000;
+    const holdMs = (parseFloat(wrapper.getAttribute('data-type-hold')) || 1.8) * 1000;
     const startMs = (parseFloat(wrapper.getAttribute('data-type-start')) || 0.5) * 1000;
-    // Seconds between the three page-load stages (type → background → rest).
-    const gapMs = (parseFloat(wrapper.getAttribute('data-stage-gap')) || 2) * 1000;
+    // Seconds between the post-sequence stages (background → rest).
+    const gapMs = (parseFloat(wrapper.getAttribute('data-stage-gap')) || 1.5) * 1000;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     // ---- Hero page-load staging elements (all optional) ----
-    //   data-hero-curtain (or .hero_curtain) : black cover, lifted at stage 2
-    //   data-hero-bg                         : background, faded in at stage 2
-    //   data-hero-reveal                     : everything else, faded in at stage 3
     const curtain = document.querySelector('[data-hero-curtain], .hero_curtain');
     const bg = document.querySelector('[data-hero-bg]');
     const restEls = Array.from(document.querySelectorAll('[data-hero-reveal]'));
@@ -3975,68 +3978,97 @@ function initTypeBuild() {
       else { el.style.transition = `opacity ${dur}s ease`; el.style.opacity = 0; }
     };
 
-    // Pre-state: curtain black & on top, the text raised ABOVE it so "Reactive
-    // Squad" types on black, separate bg element hidden. (rest already hidden via
-    // injected CSS opacity:0.)
-    if (curtain && G) {
-      gsap.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
-      const cz = parseInt(window.getComputedStyle(curtain).zIndex, 10) || 0;
-      gsap.set(target, { position: 'relative', zIndex: cz + 2 });
-    }
-    if (bg && G) gsap.set(bg, { autoAlpha: 0 });
-
+    // After the typed sequence finishes: background reveals, then the rest.
     const stageBackground = () => { fadeOut(curtain, 0.9); fadeIn(bg, 0.9); };
     const stageRest = () => { fadeIn(restEls, 0.8, 0.08); };
+    const runStaging = () => {
+      stageBackground();
+      if (restEls.length) setTimeout(stageRest, gapMs);
+    };
 
     if (phrases.length === 0) {
       wrapper.style.visibility = 'visible';
-      stageBackground(); stageRest();
+      runStaging();
       return;
     }
 
-    // Full accumulated string + the char index at the end of each sentence (where
-    // we pause). Sentences are joined with a single space.
-    const full = phrases.join(' ');
-    const checkpoints = [];
-    let acc = '';
-    phrases.forEach((p, idx) => { acc += (idx ? ' ' : '') + p; checkpoints.push(acc.length); });
-
-    // Reserve height so the empty heading doesn't collapse and shift layout.
-    target.style.minHeight = '1lh';
+    // ---- Stable sizing: build two overlaid layers inside the heading so the
+    // text NEVER reflows while typing (critical with a max-width). A hidden
+    // "sizer" span holds the current phrase and sizes the box; an absolutely
+    // positioned "typed" span shows the characters typed so far on top of it.
+    // The heading's own display/line-height-trim is untouched (no display:grid).
+    target.style.position = 'relative';
     target.textContent = '';
+    const sizer = document.createElement('span');
+    sizer.setAttribute('aria-hidden', 'true');
+    sizer.style.visibility = 'hidden';
+    sizer.style.whiteSpace = 'pre-wrap';
+    const typed = document.createElement('span');
+    typed.setAttribute('aria-hidden', 'true');
+    typed.style.position = 'absolute';
+    typed.style.top = '0';
+    typed.style.left = '0';
+    typed.style.right = '0';
+    typed.style.whiteSpace = 'pre-wrap';
+    target.appendChild(sizer);
+    target.appendChild(typed);
+
+    // Reserve the tallest phrase's height up front, so the box doesn't jump
+    // vertically when phrases of different line-counts swap in.
+    let maxH = 0;
+    phrases.forEach((p) => { sizer.textContent = p; maxH = Math.max(maxH, target.offsetHeight); });
+    target.style.minHeight = maxH + 'px';
+    sizer.textContent = phrases[0];
+    typed.textContent = '';
     wrapper.style.visibility = 'visible';
 
+    // Raise text above the black curtain so it types on black.
+    if (curtain && G) {
+      gsap.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
+      const cz = parseInt(window.getComputedStyle(curtain).zIndex, 10) || 0;
+      gsap.set(target, { zIndex: cz + 2 });
+    }
+    if (bg && G) gsap.set(bg, { autoAlpha: 0 });
+
     if (reduced) {
-      target.textContent = full;
-      fadeOut(curtain, 0); fadeIn(bg, 0); fadeIn(restEls, 0);
+      sizer.style.visibility = 'visible';
+      sizer.textContent = phrases[phrases.length - 1];
+      typed.remove();
+      runStaging();
       return;
     }
 
-    // Stages timed from load, ~gap apart: background at gap, rest at 2×gap. (The
-    // typing runs in parallel; "Reactive Squad" is on screen well before gap.)
-    if (hasStaging) {
-      setTimeout(stageBackground, gapMs);
-      setTimeout(stageRest, gapMs * 2);
-    }
-
-    let i = 0;   // chars typed
-    let cp = 0;  // next checkpoint
-    const step = () => {
-      i += 1;
-      target.textContent = full.slice(0, i);
-      if (i >= full.length) {
-        if (!hasStaging) setTimeout(stageRest, 200);
-        return;
-      }
-      // Pause at the end of a sentence (not the final one).
-      if (cp < checkpoints.length && i === checkpoints[cp]) {
-        cp += 1;
-        setTimeout(step, holdMs);
-      } else {
-        setTimeout(step, TYPE_MS);
-      }
+    // ---- REPLACE sequence: type a phrase → hold (read) → delete → next.
+    // The last phrase stays, then staging runs.
+    const typePhrase = (str, done) => {
+      let n = 0;
+      const tick = () => {
+        n += 1;
+        typed.textContent = str.slice(0, n);
+        if (n < str.length) setTimeout(tick, TYPE_MS);
+        else done();
+      };
+      tick();
     };
-    setTimeout(step, startMs);
+    const deletePhrase = (done) => {
+      const tick = () => {
+        const cur = typed.textContent;
+        if (cur.length > 0) { typed.textContent = cur.slice(0, -1); setTimeout(tick, DELETE_MS); }
+        else done();
+      };
+      tick();
+    };
+    const runPhrase = (idx) => {
+      sizer.textContent = phrases[idx]; // size the box for this phrase
+      typePhrase(phrases[idx], () => {
+        if (idx < phrases.length - 1) {
+          setTimeout(() => deletePhrase(() => runPhrase(idx + 1)), holdMs);
+        } else {
+          setTimeout(runStaging, holdMs); // last phrase stays, then reveal
+        }
+      });
+    };
+    setTimeout(() => runPhrase(0), startMs);
   });
 }
 
