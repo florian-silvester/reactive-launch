@@ -3982,8 +3982,16 @@ function initTypeBuild() {
       else { el.style.transition = `opacity ${dur}s ease`; el.style.opacity = 0; }
     };
 
-    // After the typed sequence finishes: background reveals, then the rest.
-    const stageBackground = () => { fadeOut(curtain, 0.9); fadeIn(bg, 0.9); };
+    // Stage 2 (after the FIRST phrase): the dark screen gives way — background
+    // fades in (and any literal curtain lifts). Stage 3 (after the LAST phrase):
+    // everything else fades in.
+    let bgRevealed = false;
+    const stageBackground = () => {
+      if (bgRevealed) return;
+      bgRevealed = true;
+      fadeOut(curtain, 1.1);
+      fadeIn(bg, 1.1);
+    };
     const stageRest = () => { fadeIn(restEls, 0.8, 0.08); };
     const runStaging = () => {
       stageBackground();
@@ -4071,8 +4079,11 @@ function initTypeBuild() {
       deleteTo(commonPrefixLen(current, phrase), () => {
         sizer.textContent = phrase;
         typeTo(phrase, () => {
+          // After the first phrase ("Reactive Squad."): the dark screen lifts —
+          // background fades in while the rest of the sequence continues.
+          if (idx === 0) setTimeout(stageBackground, holdMs);
           if (idx < phrases.length - 1) setTimeout(() => runPhrase(idx + 1), holdMs);
-          else setTimeout(runStaging, holdMs);
+          else setTimeout(stageRest, holdMs); // last phrase stays → reveal the rest
         });
       });
     };
