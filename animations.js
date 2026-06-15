@@ -1396,12 +1396,33 @@ async function initLidarScanners() {
       return;
     }
     container.dataset.lidarInitialized = 'true';
-    container.classList.add('lidar-container');
-    container.innerHTML = `
+
+    // data-lidar often sits on a Lumos display:contents slot. Adding positioning
+    // or overflow to a display:contents element forces the browser to generate a
+    // box for it — which then claims a slot in the parent grid/flex and shoves
+    // sibling content (e.g. overlaid text) aside. Resolve down to the first real
+    // box element and mount the canvas THERE, leaving the wrapper untouched so it
+    // keeps contributing nothing to layout.
+    let host = container;
+    while (host && window.getComputedStyle(host).display === 'contents') {
+      host = host.firstElementChild;
+    }
+    if (!host) host = container;
+
+    // Apply only what's needed, inline — NOT the .lidar-container class, whose
+    // position:relative would clobber an existing positioning context like
+    // u-cover-absolute (the intended background layer). Preserve the host's own
+    // position; only establish one if it has none.
+    host.style.overflow = 'hidden';
+    host.style.background = 'transparent';
+    if (window.getComputedStyle(host).position === 'static') {
+      host.style.position = 'relative';
+    }
+    host.innerHTML = `
       <div class="lidar-canvas" data-canvas></div>
     `;
 
-    const canvasHost = container.querySelector('[data-canvas]');
+    const canvasHost = host.querySelector('[data-canvas]');
     const infoStatus = null;
     const infoPoints = null;
     const infoProgress = null;
