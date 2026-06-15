@@ -3037,6 +3037,22 @@ function initHeroAnimation() {
         return;
       }
 
+      // NEW PAGE-LOAD ANIMATION: when the hero uses data-type-build, the old
+      // intro choreography is replaced by the type-build sequence (curtain →
+      // type → background → rest). Snap the hero to its resting VISIBLE state so
+      // the scroll timeline (parallax, card scrub, exit) keeps working unchanged,
+      // but leave the curtain BLACK and on top — initTypeBuild lifts it as part
+      // of the staged reveal.
+      if (scene.querySelector('[data-type-build]')) {
+        if (navWrap) gsap.set(navWrap, { autoAlpha: 1, clipPath: 'inset(0 0% 0 0)' });
+        if (svgHeader) gsap.set(svgHeader, { autoAlpha: 1, y: 0 });
+        if (heroImgWrap) gsap.set(heroImgWrap, { opacity: 1, scale: 1 });
+        if (heroCurtain) gsap.set(heroCurtain, { autoAlpha: 1, pointerEvents: 'none' });
+        scene.dataset.heroIntroPlayed = 'true';
+        revealInitialPaint();
+        return;
+      }
+
       if (scene.dataset.heroIntroPlayed === 'true') {
         if (navWrap) gsap.set(navWrap, { autoAlpha: 1, clipPath: 'inset(0 0% 0 0)' });
         if (svgHeader) gsap.set(svgHeader, { autoAlpha: 1, y: 0 });
@@ -3923,6 +3939,7 @@ function initTypeBuild() {
   injectTypeBuildStyles();
 
   const TYPE_MS = 38; // per character
+  const G = typeof gsap !== 'undefined';
 
   wrappers.forEach((wrapper) => {
     if (wrapper.dataset.typeBuildInit === 'true') return;
@@ -3933,21 +3950,47 @@ function initTypeBuild() {
       .split('|').map((s) => s.trim()).filter(Boolean);
     const holdMs = (parseFloat(wrapper.getAttribute('data-type-hold')) || 0.7) * 1000;
     const startMs = (parseFloat(wrapper.getAttribute('data-type-start')) || 0.5) * 1000;
+    // Seconds between the three page-load stages (type → background → rest).
+    const gapMs = (parseFloat(wrapper.getAttribute('data-stage-gap')) || 2) * 1000;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    const revealRest = () => {
-      const rest = Array.from(document.querySelectorAll('[data-hero-reveal]'));
-      if (rest.length === 0) return;
-      if (typeof gsap !== 'undefined') {
-        gsap.to(rest, { opacity: 1, duration: 0.8, ease: 'power2.out', stagger: 0.08 });
-      } else {
-        rest.forEach((el) => { el.style.transition = 'opacity 0.8s ease'; el.style.opacity = 1; });
-      }
+    // ---- Hero page-load staging elements (all optional) ----
+    //   data-hero-curtain (or .hero_curtain) : black cover, lifted at stage 2
+    //   data-hero-bg                         : background, faded in at stage 2
+    //   data-hero-reveal                     : everything else, faded in at stage 3
+    const curtain = document.querySelector('[data-hero-curtain], .hero_curtain');
+    const bg = document.querySelector('[data-hero-bg]');
+    const restEls = Array.from(document.querySelectorAll('[data-hero-reveal]'));
+    const hasStaging = !!(curtain || bg || restEls.length);
+
+    const fadeIn = (els, dur, stagger) => {
+      const arr = Array.isArray(els) ? els : (els ? [els] : []);
+      if (arr.length === 0) return;
+      if (G) gsap.to(arr, { autoAlpha: 1, opacity: 1, duration: dur, ease: 'power2.out', stagger: stagger || 0 });
+      else arr.forEach((el) => { el.style.transition = `opacity ${dur}s ease`; el.style.opacity = 1; });
     };
+    const fadeOut = (el, dur) => {
+      if (!el) return;
+      if (G) gsap.to(el, { autoAlpha: 0, duration: dur, ease: 'power2.inOut' });
+      else { el.style.transition = `opacity ${dur}s ease`; el.style.opacity = 0; }
+    };
+
+    // Pre-state: curtain black & on top, the text raised ABOVE it so "Reactive
+    // Squad" types on black, separate bg element hidden. (rest already hidden via
+    // injected CSS opacity:0.)
+    if (curtain && G) {
+      gsap.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
+      const cz = parseInt(window.getComputedStyle(curtain).zIndex, 10) || 0;
+      gsap.set(target, { position: 'relative', zIndex: cz + 2 });
+    }
+    if (bg && G) gsap.set(bg, { autoAlpha: 0 });
+
+    const stageBackground = () => { fadeOut(curtain, 0.9); fadeIn(bg, 0.9); };
+    const stageRest = () => { fadeIn(restEls, 0.8, 0.08); };
 
     if (phrases.length === 0) {
       wrapper.style.visibility = 'visible';
-      revealRest();
+      stageBackground(); stageRest();
       return;
     }
 
@@ -3965,8 +4008,15 @@ function initTypeBuild() {
 
     if (reduced) {
       target.textContent = full;
-      revealRest();
+      fadeOut(curtain, 0); fadeIn(bg, 0); fadeIn(restEls, 0);
       return;
+    }
+
+    // Stages timed from load, ~gap apart: background at gap, rest at 2×gap. (The
+    // typing runs in parallel; "Reactive Squad" is on screen well before gap.)
+    if (hasStaging) {
+      setTimeout(stageBackground, gapMs);
+      setTimeout(stageRest, gapMs * 2);
     }
 
     let i = 0;   // chars typed
@@ -3974,7 +4024,10 @@ function initTypeBuild() {
     const step = () => {
       i += 1;
       target.textContent = full.slice(0, i);
-      if (i >= full.length) { setTimeout(revealRest, 200); return; }
+      if (i >= full.length) {
+        if (!hasStaging) setTimeout(stageRest, 200);
+        return;
+      }
       // Pause at the end of a sentence (not the final one).
       if (cp < checkpoints.length && i === checkpoints[cp]) {
         cp += 1;
