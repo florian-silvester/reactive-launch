@@ -4038,34 +4038,42 @@ function initTypeBuild() {
       return;
     }
 
-    // ---- REPLACE sequence: type a phrase → hold (read) → delete → next.
-    // The last phrase stays, then staging runs.
-    const typePhrase = (str, done) => {
+    // ---- MORPH sequence: from the current text, delete back only to the COMMON
+    // beginning of the next phrase, then type the rest. A shared prefix stays put
+    // (e.g. "Reactive Squad." persists while the suffix after it cycles); phrases
+    // that share no start fully erase and retype. Hold (read) between phrases;
+    // the last phrase stays, then staging runs.
+    const commonPrefixLen = (a, b) => {
       let n = 0;
-      const tick = () => {
-        n += 1;
-        typed.textContent = str.slice(0, n);
-        if (n < str.length) setTimeout(tick, TYPE_MS);
-        else done();
-      };
-      tick();
+      const m = Math.min(a.length, b.length);
+      while (n < m && a[n] === b[n]) n += 1;
+      return n;
     };
-    const deletePhrase = (done) => {
-      const tick = () => {
-        const cur = typed.textContent;
-        if (cur.length > 0) { typed.textContent = cur.slice(0, -1); setTimeout(tick, DELETE_MS); }
-        else done();
-      };
-      tick();
+    let current = '';
+    const typeTo = (str, done) => {
+      if (current.length < str.length) {
+        current = str.slice(0, current.length + 1);
+        typed.textContent = current;
+        setTimeout(() => typeTo(str, done), TYPE_MS);
+      } else done();
+    };
+    const deleteTo = (len, done) => {
+      if (current.length > len) {
+        current = current.slice(0, -1);
+        typed.textContent = current;
+        setTimeout(() => deleteTo(len, done), DELETE_MS);
+      } else done();
     };
     const runPhrase = (idx) => {
-      sizer.textContent = phrases[idx]; // size the box for this phrase
-      typePhrase(phrases[idx], () => {
-        if (idx < phrases.length - 1) {
-          setTimeout(() => deletePhrase(() => runPhrase(idx + 1)), holdMs);
-        } else {
-          setTimeout(runStaging, holdMs); // last phrase stays, then reveal
-        }
+      const phrase = phrases[idx];
+      // Size the box to the longer of current/target so neither phase reflows.
+      sizer.textContent = phrase.length >= current.length ? phrase : current;
+      deleteTo(commonPrefixLen(current, phrase), () => {
+        sizer.textContent = phrase;
+        typeTo(phrase, () => {
+          if (idx < phrases.length - 1) setTimeout(() => runPhrase(idx + 1), holdMs);
+          else setTimeout(runStaging, holdMs);
+        });
       });
     };
     setTimeout(() => runPhrase(0), startMs);
