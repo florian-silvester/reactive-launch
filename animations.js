@@ -3050,12 +3050,15 @@ function initHeroAnimation() {
       // the scroll timeline (parallax, card scrub, exit) keeps working unchanged,
       // but leave the curtain BLACK and on top — initTypeBuild lifts it as part
       // of the staged reveal.
-      if (scene.querySelector('[data-type-build]')) {
+      // The text + curtain may live OUTSIDE this scene element, so check the whole
+      // document — otherwise the normal intro runs and fades the curtain away
+      // before the typing even starts.
+      if (document.querySelector('[data-type-build]')) {
         if (navWrap) gsap.set(navWrap, { autoAlpha: 1, clipPath: 'inset(0 0% 0 0)' });
         if (svgHeader) gsap.set(svgHeader, { autoAlpha: 1, y: 0 });
         if (heroImgWrap) gsap.set(heroImgWrap, { opacity: 1, scale: 1 });
-        // Curtain stays BLACK at load (it sits behind the text, so the typing is
-        // visible on top of it). initTypeBuild lifts it after the first phrase.
+        // Curtain stays BLACK at load (its Webflow default, behind the text) —
+        // initTypeBuild lifts it after the first phrase. Don't fade it here.
         if (heroCurtain) gsap.set(heroCurtain, { autoAlpha: 1, pointerEvents: 'none' });
         scene.dataset.heroIntroPlayed = 'true';
         revealInitialPaint();
@@ -4034,8 +4037,10 @@ function initTypeBuild() {
     typed.textContent = '';
     wrapper.style.visibility = 'visible';
 
-    // Background hidden at start ("dark screen"); it fades in after the sequence.
-    // No curtain z-index games — the text types on the dark hero section directly.
+    // Curtain BLACK at start (it sits behind the text). initTypeBuild owns it —
+    // set it explicitly so it doesn't depend on the hero-intro gate firing.
+    if (curtain && G) gsap.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
+    // Background hidden at start; fades in after the first phrase.
     if (bg && G) gsap.set(bg, { autoAlpha: 0 });
 
     if (reduced) {
@@ -4103,39 +4108,51 @@ try { injectTypeBuildStyles(); } catch (e) { /* DOM not ready in exotic loads */
 // No-op when [data-img="background"] is absent.
 function initBackgroundParallax() {
   if (typeof gsap === 'undefined') return;
-  const imgs = Array.from(document.querySelectorAll('[data-img="background"]'));
-  if (imgs.length === 0) return;
+  const sections = Array.from(document.querySelectorAll('[data-img="background"]'));
+  if (sections.length === 0) return;
 
-  const SHIFT = 7;   // % of the element height it drifts each way
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduced) return;
+  const SHIFT = 7;   // % of the image height it drifts each way
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   loadScrollTriggerOnce().then(() => {
-    imgs.forEach((img) => {
-      if (img.dataset.bgParallaxInit === 'true') return;
-      img.dataset.bgParallaxInit = 'true';
+    let count = 0;
+    sections.forEach((section) => {
+      if (section.dataset.bgParallaxInit === 'true') return;
+      section.dataset.bgParallaxInit = 'true';
 
-      // Oversize so the ±7% drift stays covered (cover images are normally exactly
-      // 100% — translating them would reveal an edge without this).
-      gsap.set(img, { scale: 1.18, transformOrigin: 'center center', willChange: 'transform' });
+      // data-img="background" is on the SECTION, but we must NOT move the section
+      // (that drags all the content). The full-bleed cover background is the
+      // image(s) inside a u-cover-absolute layer; the foreground/product image
+      // (not under a cover layer) is deliberately left alone.
+      let targets = Array.from(section.querySelectorAll('.u-cover-absolute .u-image, .u-cover-absolute img'));
+      if (targets.length === 0) {
+        // Fallback: any image directly described as cover.
+        targets = Array.from(section.querySelectorAll('.u-cover-absolute .u-video'));
+      }
+      if (targets.length === 0) return;
 
-      const trigger = img.closest('section') || img.parentElement || img;
-      gsap.fromTo(img,
-        { yPercent: -SHIFT },
-        {
-          yPercent: SHIFT,
-          ease: 'none',
-          scrollTrigger: {
-            trigger,
-            start: 'top bottom',
-            end: 'bottom top',
-            scrub: true,
-            invalidateOnRefresh: true,
-          },
-        }
-      );
+      targets.forEach((img) => {
+        // Oversize so the ±7% drift never exposes an edge (cover images sit at
+        // exactly 100%); the u-image-wrapper clips the overflow.
+        gsap.set(img, { scale: 1.18, transformOrigin: 'center center', willChange: 'transform' });
+        gsap.fromTo(img,
+          { yPercent: -SHIFT },
+          {
+            yPercent: SHIFT,
+            ease: 'none',
+            scrollTrigger: {
+              trigger: section,
+              start: 'top bottom',
+              end: 'bottom top',
+              scrub: true,
+              invalidateOnRefresh: true,
+            },
+          }
+        );
+        count += 1;
+      });
     });
-    console.log('🏞️ background parallax: initialized', imgs.length);
+    console.log('🏞️ background parallax: initialized', count, 'images in', sections.length, 'sections');
   }).catch((err) => console.error('🏞️ background parallax:', err));
 }
 
