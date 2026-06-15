@@ -364,6 +364,7 @@ if (!window.barbaInitialized) {
           setTimeout(() => {
             initAccordionTabsCombo();
             initHeroTypeSequence();
+            initTypeBuild();
           }, 715);
 
           // Initialize scroll-triggered typing text
@@ -438,6 +439,7 @@ if (!window.barbaInitialized) {
       initHeaderTypeText();
       initAccordionTabsCombo();
       initHeroTypeSequence();
+      initTypeBuild();
     }, 1230);
 
     // Transition-1 exit animation on initial load
@@ -3887,6 +3889,108 @@ function initHeroTypeSequence() {
 try { injectTypeSequenceStyles(); } catch (e) { /* DOM not ready in exotic loads */ }
 
 // ================================================================================
+// ⌨️ HERO TYPE BUILD (data-type-build="Sentence one.|Sentence two.|Sentence three.")
+// ================================================================================
+// Accumulating typewriter for hero copy: types the phrases one after another into
+// a single growing paragraph, pausing at each sentence boundary, ending on the
+// full text. Starts EMPTY (visibility hidden injected at script execution, so the
+// full text never flashes). When typing finishes, any [data-hero-reveal] elements
+// fade in ("then the rest fades in").
+//
+// Pipeline the user described:
+//   1. black hero curtain  (existing hero curtain — untouched here)
+//   2. text types in       (this function)
+//   3. the rest fades in    ([data-hero-reveal] elements)
+//
+// Attributes:
+//   data-type-build  = phrases joined with "|" (typed in order, space-joined)
+//   data-type-hold   = seconds to pause at each sentence boundary (default 0.7)
+//   data-type-start  = seconds to wait before the first character (default 0.5)
+// No-op when data-type-build is absent.
+function injectTypeBuildStyles() {
+  if (document.getElementById('hero-type-build-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'hero-type-build-styles';
+  // Hide the headline (until JS empties + reveals it) and pre-hide the rest so
+  // it doesn't show before the typing completes.
+  style.textContent = '[data-type-build] { visibility: hidden; } [data-hero-reveal] { opacity: 0; }';
+  document.head.appendChild(style);
+}
+
+function initTypeBuild() {
+  const wrappers = Array.from(document.querySelectorAll('[data-type-build]'));
+  if (wrappers.length === 0) return;
+  injectTypeBuildStyles();
+
+  const TYPE_MS = 38; // per character
+
+  wrappers.forEach((wrapper) => {
+    if (wrapper.dataset.typeBuildInit === 'true') return;
+    wrapper.dataset.typeBuildInit = 'true';
+
+    const target = wrapper.querySelector('h1, h2, h3, h4, h5, h6, p, [data-text-target]') || wrapper;
+    const phrases = (wrapper.getAttribute('data-type-build') || '')
+      .split('|').map((s) => s.trim()).filter(Boolean);
+    const holdMs = (parseFloat(wrapper.getAttribute('data-type-hold')) || 0.7) * 1000;
+    const startMs = (parseFloat(wrapper.getAttribute('data-type-start')) || 0.5) * 1000;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const revealRest = () => {
+      const rest = Array.from(document.querySelectorAll('[data-hero-reveal]'));
+      if (rest.length === 0) return;
+      if (typeof gsap !== 'undefined') {
+        gsap.to(rest, { opacity: 1, duration: 0.8, ease: 'power2.out', stagger: 0.08 });
+      } else {
+        rest.forEach((el) => { el.style.transition = 'opacity 0.8s ease'; el.style.opacity = 1; });
+      }
+    };
+
+    if (phrases.length === 0) {
+      wrapper.style.visibility = 'visible';
+      revealRest();
+      return;
+    }
+
+    // Full accumulated string + the char index at the end of each sentence (where
+    // we pause). Sentences are joined with a single space.
+    const full = phrases.join(' ');
+    const checkpoints = [];
+    let acc = '';
+    phrases.forEach((p, idx) => { acc += (idx ? ' ' : '') + p; checkpoints.push(acc.length); });
+
+    // Reserve height so the empty heading doesn't collapse and shift layout.
+    target.style.minHeight = '1lh';
+    target.textContent = '';
+    wrapper.style.visibility = 'visible';
+
+    if (reduced) {
+      target.textContent = full;
+      revealRest();
+      return;
+    }
+
+    let i = 0;   // chars typed
+    let cp = 0;  // next checkpoint
+    const step = () => {
+      i += 1;
+      target.textContent = full.slice(0, i);
+      if (i >= full.length) { setTimeout(revealRest, 200); return; }
+      // Pause at the end of a sentence (not the final one).
+      if (cp < checkpoints.length && i === checkpoints[cp]) {
+        cp += 1;
+        setTimeout(step, holdMs);
+      } else {
+        setTimeout(step, TYPE_MS);
+      }
+    };
+    setTimeout(step, startMs);
+  });
+}
+
+// Pre-hide build headlines + their reveal targets at script execution.
+try { injectTypeBuildStyles(); } catch (e) { /* DOM not ready in exotic loads */ }
+
+// ================================================================================
 // 🃏 STICKY SECTION OVERLAYS (sticky-section="wrapper" + data-overlay)
 // ================================================================================
 // Stacked-cards dimming: inside a wrapper marked sticky-section="wrapper", each
@@ -3992,6 +4096,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initStickySectionOverlays();
   initAccordionTabsCombo();
   initHeroTypeSequence();
+  initTypeBuild();
 } else {
   document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM Content Loaded (standalone), initializing auto-scroll...');
@@ -4009,5 +4114,6 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     initStickySectionOverlays();
     initAccordionTabsCombo();
     initHeroTypeSequence();
+    initTypeBuild();
   });
 }
