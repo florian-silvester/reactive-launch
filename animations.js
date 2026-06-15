@@ -3052,7 +3052,11 @@ function initHeroAnimation() {
         if (navWrap) gsap.set(navWrap, { autoAlpha: 1, clipPath: 'inset(0 0% 0 0)' });
         if (svgHeader) gsap.set(svgHeader, { autoAlpha: 1, y: 0 });
         if (heroImgWrap) gsap.set(heroImgWrap, { opacity: 1, scale: 1 });
-        if (heroCurtain) gsap.set(heroCurtain, { autoAlpha: 1, pointerEvents: 'none' });
+        // Curtain OUT immediately — it must not cover the typing text (they're in
+        // different stacking contexts, so z-index can't lift the text above it).
+        // The "dark screen" comes from the dark hero section with the background
+        // video held hidden by initTypeBuild; the video then fades in at stage 2.
+        if (heroCurtain) gsap.set(heroCurtain, { autoAlpha: 0, pointerEvents: 'none' });
         scene.dataset.heroIntroPlayed = 'true';
         revealInitialPaint();
         return;
@@ -4022,12 +4026,8 @@ function initTypeBuild() {
     typed.textContent = '';
     wrapper.style.visibility = 'visible';
 
-    // Raise text above the black curtain so it types on black.
-    if (curtain && G) {
-      gsap.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
-      const cz = parseInt(window.getComputedStyle(curtain).zIndex, 10) || 0;
-      gsap.set(target, { zIndex: cz + 2 });
-    }
+    // Background hidden at start ("dark screen"); it fades in after the sequence.
+    // No curtain z-index games — the text types on the dark hero section directly.
     if (bg && G) gsap.set(bg, { autoAlpha: 0 });
 
     if (reduced) {
