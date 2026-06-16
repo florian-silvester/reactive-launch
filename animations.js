@@ -3973,6 +3973,16 @@ function initTypeBuild() {
     const restEls = Array.from(document.querySelectorAll('[data-hero-reveal]'));
     const hasStaging = !!(curtain || bg || restEls.length);
 
+    console.log('🎬 type-build init:', {
+      phrases: phrases.length,
+      curtainFound: !!curtain,
+      curtainClass: curtain ? curtain.className.slice(0, 50) : null,
+      curtainOpacityBefore: curtain ? getComputedStyle(curtain).opacity : null,
+      curtainZ: curtain ? getComputedStyle(curtain).zIndex : null,
+      bgFound: !!bg,
+      restCount: restEls.length
+    });
+
     const fadeIn = (els, dur, stagger) => {
       const arr = Array.isArray(els) ? els : (els ? [els] : []);
       if (arr.length === 0) return;
@@ -4039,7 +4049,17 @@ function initTypeBuild() {
 
     // Curtain BLACK at start (it sits behind the text). initTypeBuild owns it —
     // set it explicitly so it doesn't depend on the hero-intro gate firing.
-    if (curtain && G) gsap.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
+    if (curtain && G) {
+      gsap.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
+      // What is painted on top of the curtain's center? (Is the bg covering it?)
+      const cb = curtain.getBoundingClientRect();
+      const topEl = document.elementFromPoint(
+        Math.max(0, Math.min(window.innerWidth - 1, cb.x + cb.width / 2)),
+        Math.max(0, Math.min(window.innerHeight - 1, cb.y + cb.height / 2))
+      );
+      console.log('🎬 curtain set black → opacity now', getComputedStyle(curtain).opacity,
+        '| painted on top at center:', topEl ? topEl.tagName + '.' + [...topEl.classList].slice(0, 3).join('.') : null);
+    }
     // Background hidden at start; fades in after the first phrase.
     if (bg && G) gsap.set(bg, { autoAlpha: 0 });
 
@@ -4132,6 +4152,14 @@ function initBackgroundParallax() {
       if (targets.length === 0) return;
 
       targets.forEach((img) => {
+        const ir = img.getBoundingClientRect();
+        const sr = section.getBoundingClientRect();
+        console.log('🏞️ parallax target:', {
+          imgSize: Math.round(ir.width) + 'x' + Math.round(ir.height),
+          sectionSize: Math.round(sr.width) + 'x' + Math.round(sr.height),
+          sectionPos: getComputedStyle(section).position,
+          wrapperOverflow: img.parentElement ? getComputedStyle(img.parentElement).overflow : null
+        });
         // Oversize so the ±7% drift never exposes an edge (cover images sit at
         // exactly 100%); the u-image-wrapper clips the overflow.
         gsap.set(img, { scale: 1.18, transformOrigin: 'center center', willChange: 'transform' });
