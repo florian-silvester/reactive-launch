@@ -366,6 +366,7 @@ if (!window.barbaInitialized) {
             initHeroTypeSequence();
             initTypeBuild();
             initBackgroundParallax();
+            initHeadroomNav();
           }, 715);
 
           // Initialize scroll-triggered typing text
@@ -442,6 +443,7 @@ if (!window.barbaInitialized) {
       initHeroTypeSequence();
       initTypeBuild();
       initBackgroundParallax();
+      initHeadroomNav();
     }, 1230);
 
     // Transition-1 exit animation on initial load
@@ -4188,6 +4190,53 @@ try { injectTypeBuildStyles(); } catch (e) { /* DOM not ready in exotic loads */
 // scaled up a touch so the parallax shift never exposes an edge, then translated
 // from -7% to +7% as its section passes through the viewport (scrubbed to scroll).
 // No-op when [data-img="background"] is absent.
+// ================================================================================
+// 📌 HEADROOM NAV (.nav_component) — pin on scroll up, hide on scroll down
+// ================================================================================
+// Uses Headroom.js (already loaded on the page) to toggle classes by scroll
+// direction; the injected CSS does the show/hide transform. The nav stays
+// position:fixed; Headroom just slides it up out of view when scrolling down and
+// back in when scrolling up. No-op if .nav_component is absent.
+function loadHeadroomOnce() {
+  return new Promise((resolve, reject) => {
+    if (typeof Headroom !== 'undefined') { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/headroom.js@0.12.0/dist/headroom.min.js';
+    s.onload = () => (typeof Headroom !== 'undefined' ? resolve() : reject('Headroom missing after load'));
+    s.onerror = () => reject('Failed to load Headroom');
+    document.head.appendChild(s);
+  });
+}
+
+function injectHeadroomNavStyles() {
+  if (document.getElementById('headroom-nav-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'headroom-nav-styles';
+  style.textContent = `
+    .nav_component { transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); will-change: transform; }
+    .nav_component.headroom--unpinned { transform: translateY(-100%); }
+    .nav_component.headroom--pinned { transform: translateY(0%); }
+  `;
+  document.head.appendChild(style);
+}
+
+function initHeadroomNav() {
+  const nav = document.querySelector('.nav_component');
+  if (!nav || nav.dataset.headroomInit === 'true') return;
+  injectHeadroomNavStyles();
+  loadHeadroomOnce().then(() => {
+    if (nav.dataset.headroomInit === 'true' || typeof Headroom === 'undefined') return;
+    nav.dataset.headroomInit = 'true';
+    const hr = new Headroom(nav, {
+      tolerance: 6,   // ignore tiny scroll jitters
+      offset: 80      // don't hide until scrolled 80px past the top
+    });
+    hr.init();
+    nav._headroom = hr;
+    console.log('📌 headroom nav initialized');
+  }).catch((err) => console.error('📌 headroom:', err));
+}
+
 function initBackgroundParallax() {
   if (typeof gsap === 'undefined') return;
   const sections = Array.from(document.querySelectorAll('[data-img="background"]'));
@@ -4351,6 +4400,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initHeroTypeSequence();
   initTypeBuild();
   initBackgroundParallax();
+  initHeadroomNav();
 } else {
   document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM Content Loaded (standalone), initializing auto-scroll...');
@@ -4370,5 +4420,6 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     initHeroTypeSequence();
     initTypeBuild();
     initBackgroundParallax();
+    initHeadroomNav();
   });
 }
