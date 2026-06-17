@@ -2807,6 +2807,18 @@ function initScrubTypeText() {
 function initHeaderTypeText() {
   if (typeof gsap === 'undefined') return;
 
+  // Double-init guard: on initial load BOTH the standalone path and the Barba
+  // 'once' hook call this. The second call would revert the first split and
+  // re-type ("appears, animates, animates again"). If every data-header="type"
+  // heading on the CURRENT DOM is already split, this is the duplicate call —
+  // skip it. (Barba page swaps replace the container, so freshly-loaded headings
+  // have no split chars yet and DO run.)
+  const liveWrappers = Array.from(document.querySelectorAll('[data-header="type"]'))
+    .filter((w) => !w.querySelector('[data-type-build]') && !w.closest('[data-type-build]'));
+  if (liveWrappers.length > 0 && liveWrappers.every((w) => w.querySelector('.header-type__char'))) {
+    return;
+  }
+
   // Clean up previous run (revert splits, kill triggers/timelines).
   if (window.headerTypeTextState) {
     const oldState = window.headerTypeTextState;
@@ -2867,6 +2879,8 @@ function initHeaderTypeText() {
     wrapperItems.forEach(({ targets }, wrapperIndex) => {
       targets.forEach((target, targetIndex) => {
         if ((target.textContent || '').trim().length === 0) return;
+        // Defensive: never re-split a heading that's already been split.
+        if (target.querySelector('.header-type__char')) return;
 
         // Non-destructive split. SplitText preserves nested <strong>/<em>/etc.,
         // wraps each visible character in an inline-block <div class="char">,
