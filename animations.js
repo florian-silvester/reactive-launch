@@ -2682,16 +2682,18 @@ function initScrubTypeText() {
       const tl = gsap.timeline({
         scrollTrigger: playOnce
           ? {
-              // Play-once on scroll-into-view (e.g. "intro"). Natural pace, no scrub.
+              // SAME scrub feel as the quote, but mapped to this element scrolling
+              // into view (e.g. "intro" — a normal in-flow element, not a pinned
+              // section). The reveal is bound to your scroll, so it feels natural.
               trigger,
-              start: 'top 80%',
-              toggleActions: 'play none none none',
-              once: true,
+              start: 'top 85%',
+              end: 'top 35%',
+              scrub: 0.3,
               invalidateOnRefresh: true,
               refreshPriority: 20 + index
             }
           : {
-              // Scrub mode (e.g. "quote") — reveal tied to the section's scroll.
+              // Scrub mode (e.g. "quote") — reveal tied to the pinned section's scroll.
               trigger,
               start: 'top center',
               end: () => `+=${window.innerHeight * 1.6}`,
@@ -2722,8 +2724,8 @@ function initScrubTypeText() {
         state.overlays.push(overlay);
       }
 
-      // Scrub mode reveals → HOLDS → disappears (clears for the next section).
-      // Play-once mode just reveals and STAYS (no conceal).
+      // Pinned/section mode reveals → HOLDS → disappears (clears for the next
+      // section). The in-view scrub mode (e.g. "intro") just reveals and STAYS.
       if (!playOnce) {
         const holdDuration = Math.max(0.8, textRevealDuration * 1.4);
         const fadeDuration = Math.max(0.4, textRevealDuration * 0.4);
