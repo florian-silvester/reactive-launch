@@ -2744,12 +2744,18 @@ function initScrubTypeText() {
       if (!playOnce) {
         const holdDuration = Math.max(0.8, textRevealDuration * 1.4);
         const fadeDuration = Math.max(0.4, textRevealDuration * 0.4);
-        // On exit, fade the parent wrap ([data-quote="wrap"]) as a unit instead of
-        // just the words. Falls back to the words if no wrap is found.
-        const exitTarget = target.closest('[data-quote="wrap"]')
-          || wrapper.closest('[data-quote="wrap"]')
-          || words;
-        tl.to(exitTarget, { opacity: 0, duration: fadeDuration, ease: 'none' }, textRevealDuration + holdDuration);
+        // On exit, fade the parent wrap ([data-quote="wrap"]) as a unit. The wrap
+        // is often a Lumos display:contents slot (which can't be faded — it has no
+        // box), so resolve it to its actual rendered child boxes and fade those.
+        const renderedBoxes = (el) => {
+          if (!el) return [];
+          if (window.getComputedStyle(el).display !== 'contents') return [el];
+          return Array.from(el.children).reduce((acc, c) => acc.concat(renderedBoxes(c)), []);
+        };
+        const quoteWrap = target.closest('[data-quote="wrap"]') || wrapper.closest('[data-quote="wrap"]');
+        const boxes = quoteWrap ? renderedBoxes(quoteWrap) : [];
+        const exitTargets = boxes.length ? boxes : words;
+        tl.to(exitTargets, { opacity: 0, duration: fadeDuration, ease: 'none' }, textRevealDuration + holdDuration);
       }
 
       state.timelines.push(tl);
