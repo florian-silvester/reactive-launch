@@ -386,6 +386,7 @@ if (!window.barbaInitialized) {
             initTypeBuild();
             initBackgroundParallax();
             initHeadroomNav();
+            initForceVideoAutoplay();
           }, 715);
 
           // Initialize scroll-triggered typing text
@@ -463,6 +464,7 @@ if (!window.barbaInitialized) {
       initTypeBuild();
       initBackgroundParallax();
       initHeadroomNav();
+      initForceVideoAutoplay();
     }, 1230);
 
     // Transition-1 exit animation on initial load
@@ -4210,6 +4212,55 @@ try { injectTypeBuildStyles(); } catch (e) { /* DOM not ready in exotic loads */
 // from -7% to +7% as its section passes through the viewport (scrubbed to scroll).
 // No-op when [data-img="background"] is absent.
 // ================================================================================
+// ▶️ FORCE VIDEO AUTOPLAY ON MOBILE (video[autoplay])
+// ================================================================================
+// iOS autoplay checks the muted *property*, not just the attribute — Lumos sets
+// muted="" as an attribute, which doesn't reliably reflect to the property at
+// play time, so iOS blocks autoplay and shows a play button. Set the property
+// explicitly (+ legacy webkit-playsinline) and call play(); retry on the first
+// user interaction in case the browser blocked the initial attempt.
+function initForceVideoAutoplay() {
+  const vids = Array.from(document.querySelectorAll('video[autoplay]'));
+  if (vids.length === 0) return;
+
+  const prep = (v) => {
+    v.muted = true;          // the property iOS actually checks
+    v.defaultMuted = true;
+    v.setAttribute('muted', '');
+    v.playsInline = true;
+    v.setAttribute('playsinline', '');
+    v.setAttribute('webkit-playsinline', '');
+  };
+  const tryPlay = (v) => {
+    const p = v.play();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  };
+
+  vids.forEach((v) => {
+    if (v.dataset.forceAutoplayInit === 'true') return;
+    v.dataset.forceAutoplayInit = 'true';
+    prep(v);
+    tryPlay(v);
+    v.addEventListener('loadeddata', () => tryPlay(v), { once: true });
+    v.addEventListener('canplay', () => tryPlay(v), { once: true });
+  });
+
+  // Last-resort: if a browser still blocked it, kick all of them off the first
+  // user gesture (a tap/scroll counts as interaction and unblocks playback).
+  const kick = () => {
+    vids.forEach((v) => { if (v.paused) tryPlay(v); });
+    window.removeEventListener('touchstart', kick);
+    window.removeEventListener('scroll', kick);
+    window.removeEventListener('click', kick);
+  };
+  window.addEventListener('touchstart', kick, { passive: true, once: true });
+  window.addEventListener('scroll', kick, { passive: true, once: true });
+  window.addEventListener('click', kick, { once: true });
+
+  console.log('▶️ force-video-autoplay: prepared', vids.length, 'video(s)');
+}
+
+// ================================================================================
 // 📌 HEADROOM NAV (.nav_component) — pin on scroll up, hide on scroll down
 // ================================================================================
 // Uses Headroom.js (already loaded on the page) to toggle classes by scroll
@@ -4420,6 +4471,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initTypeBuild();
   initBackgroundParallax();
   initHeadroomNav();
+  initForceVideoAutoplay();
 } else {
   document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM Content Loaded (standalone), initializing auto-scroll...');
@@ -4440,5 +4492,6 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     initTypeBuild();
     initBackgroundParallax();
     initHeadroomNav();
+    initForceVideoAutoplay();
   });
 }
