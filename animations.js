@@ -2,6 +2,25 @@ console.log('🎨 Animations.js loaded');
 console.log('📍 Script URL:', document.currentScript?.src || 'inline');
 console.log('📍 Current page:', window.location.href);
 
+// The fixed/pinned-section system initializes from scroll = 0. If the browser
+// restores scroll to mid-page (e.g. the footer) on refresh, ScrollTrigger and the
+// fixed-section sorting compute against the wrong starting state and the whole
+// stack breaks (sections scroll with their spacers, the nav/logo stays stuck at
+// the footer). Disable the browser's scroll restoration and start every full load
+// at the top so initialization is always clean. (This runs only on full page
+// loads, not Barba transitions, since the script re-executes only on full loads.)
+try {
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.scrollTo(0, 0);
+  window.addEventListener('load', () => {
+    window.scrollTo(0, 0);
+    // Recompute all ScrollTrigger positions once images/fonts have settled.
+    if (typeof ScrollTrigger !== 'undefined') {
+      try { ScrollTrigger.refresh(); } catch (e) {}
+    }
+  });
+} catch (e) {}
+
 const AUTO_SCROLL_SPEED_PX_PER_SEC = 60; // fixed speed for auto-scroll (25% slower)
 
 // Load GSAP ScrollToPlugin if not already loaded
