@@ -2646,7 +2646,22 @@ function initScrubTypeText() {
         triggerElements.find((element) => getTriggerName(element) === typeName) ||
         document.querySelector(`[data-section="${typeName}"]`) || null;
       const playOnce = !matchedTrigger;
-      const trigger = matchedTrigger || wrapper;
+      // The in-view trigger must be a REAL box. The data-type-text wrapper is
+      // usually a Lumos display:contents slot (no measurable position), which
+      // leaves the scrub stuck at fully-revealed. Resolve to the text element
+      // itself, or the nearest real ancestor box.
+      const resolveBox = (el) => {
+        let cur = el;
+        while (cur && window.getComputedStyle(cur).display === 'contents') {
+          cur = cur.firstElementChild || cur.parentElement;
+          if (cur && window.getComputedStyle(cur).display !== 'contents') break;
+        }
+        return cur || el;
+      };
+      const inViewTrigger = (target && window.getComputedStyle(target).display !== 'contents')
+        ? target
+        : resolveBox(wrapper);
+      const trigger = matchedTrigger || inViewTrigger;
       const section = Array.from(document.querySelectorAll('[data-section]')).find((element) => {
         return (element.getAttribute('data-section') || '').trim().toLowerCase() === typeName;
       });
