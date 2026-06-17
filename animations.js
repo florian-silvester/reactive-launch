@@ -2807,19 +2807,26 @@ function initScrubTypeText() {
 function initHeaderTypeText() {
   if (typeof gsap === 'undefined') return;
 
-  // Double-init guard: on initial load BOTH the standalone path and the Barba
-  // 'once' hook call this. The second call would revert the first split and
-  // re-type ("appears, animates, animates again"). If every data-header="type"
-  // heading on the CURRENT DOM is already split, this is the duplicate call —
-  // skip it. (Barba page swaps replace the container, so freshly-loaded headings
-  // have no split chars yet and DO run.)
-  const liveWrappers = Array.from(document.querySelectorAll('[data-header="type"]'))
-    .filter((w) => !w.querySelector('[data-type-build]') && !w.closest('[data-type-build]'));
-  if (liveWrappers.length > 0 && liveWrappers.every((w) => w.querySelector('.header-type__char'))) {
-    return;
-  }
+  // SYNCHRONOUS double-init guard. On initial load BOTH the standalone path and
+  // the Barba 'once' hook call this — and the second call can fire BEFORE the
+  // first call's async split (loadSplitTextOnce().then(...)) has run, so a guard
+  // that checks for already-split chars sees nothing and lets both proceed. The
+  // second one then reverts + re-types ("appears, animates, animates again").
+  //
+  // Instead we CLAIM each wrapper synchronously, right now, before any await.
+  // The duplicate call sees the claim and bails. Barba page swaps bring fresh
+  // (unclaimed) DOM, so new pages still animate.
+  //
+  // Also skip any wrapper driven by data-type-build (its own sequence types it).
+  const wrappers = Array.from(document.querySelectorAll('[data-header="type"]'))
+    .filter((w) => !w.querySelector('[data-type-build]') && !w.closest('[data-type-build]'))
+    .filter((w) => w.dataset.headerTypeClaimed !== 'true');
+  if (wrappers.length === 0) return;
+  wrappers.forEach((w) => { w.dataset.headerTypeClaimed = 'true'; });
 
-  // Clean up previous run (revert splits, kill triggers/timelines).
+  // Clean up previous run (revert splits, kill triggers/timelines). Only reached
+  // when there ARE fresh wrappers — i.e. a Barba page swap, never the same-page
+  // duplicate call (which returned above), so we never revert a live animation.
   if (window.headerTypeTextState) {
     const oldState = window.headerTypeTextState;
     oldState.triggers?.forEach((trigger) => trigger.kill());
@@ -2830,18 +2837,11 @@ function initHeaderTypeText() {
     });
   }
 
-  // Skip any data-header="type" wrapper that contains a data-type-build element —
-  // that heading is driven by the type-build sequence, not the SplitText
-  // typewriter. Running both on the same <h2> made it appear-then-retype.
-  const wrappers = Array.from(document.querySelectorAll('[data-header="type"]'))
-    .filter((w) => !w.querySelector('[data-type-build]') && !w.closest('[data-type-build]'));
   const state = { triggers: [], timelines: [], splits: [], wrappers: [] };
   window.headerTypeTextState = state;
 
   const runId = (window.headerTypeTextRunId || 0) + 1;
   window.headerTypeTextRunId = runId;
-
-  if (wrappers.length === 0) return;
 
   const textTargetSelector = 'h1, h2, h3, h4, h5, h6, p, [data-text-target]';
   const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
