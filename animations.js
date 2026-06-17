@@ -2111,6 +2111,9 @@ function loadScrollTriggerOnce() {
     if (typeof gsap === 'undefined') { reject('GSAP not loaded'); return; }
     if (typeof ScrollTrigger !== 'undefined') {
       gsap.registerPlugin(ScrollTrigger);
+      // Ignore the mobile address-bar show/hide (it changes innerHeight on every
+      // scroll frame, which otherwise refreshes ScrollTrigger constantly → jitter).
+      try { ScrollTrigger.config({ ignoreMobileResize: true }); } catch (e) {}
       resolve();
       return;
     }
@@ -2119,6 +2122,7 @@ function loadScrollTriggerOnce() {
     s.onload = () => {
       if (typeof ScrollTrigger !== 'undefined') {
         gsap.registerPlugin(ScrollTrigger);
+        try { ScrollTrigger.config({ ignoreMobileResize: true }); } catch (e) {}
         console.log('✅ ScrollTrigger loaded and registered');
         resolve();
       } else reject('ScrollTrigger missing after load');
@@ -2419,7 +2423,14 @@ function initFixedSectionSorting() {
             setActive(previousRecord.name);
           }
         }));
-        if (panel) {
+        // On mobile, the address bar's changing innerHeight makes the fixed-section
+        // parallax offset jitter and shoves the footer past the viewport (exposing
+        // the page background). Skip the parallax entirely there — sections sit flush.
+        const isMobileViewport = window.matchMedia('(max-width: 767px)').matches
+          || window.matchMedia('(pointer: coarse)').matches;
+        if (panel && isMobileViewport) {
+          setPanelParallaxOffset(panel, 0, true);
+        } else if (panel) {
           const isFooter = record.name === 'footer';
           const footerParallaxStartOffset = window.innerHeight * 0.12;
           const parallaxScrollRatio = 0.28;
