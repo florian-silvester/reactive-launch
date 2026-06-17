@@ -4136,32 +4136,34 @@ function initBackgroundParallax() {
 
   loadScrollTriggerOnce().then(() => {
     let count = 0;
-    sections.forEach((section) => {
-      if (section.dataset.bgParallaxInit === 'true') return;
-      section.dataset.bgParallaxInit = 'true';
+    sections.forEach((host) => {
+      if (host.dataset.bgParallaxInit === 'true') return;
+      host.dataset.bgParallaxInit = 'true';
 
-      // data-img="background" is on the SECTION, but we must NOT move the section
-      // (that drags all the content). The full-bleed cover background is the
-      // image(s) inside a u-cover-absolute layer; the foreground/product image
-      // (not under a cover layer) is deliberately left alone.
-      let targets = Array.from(section.querySelectorAll('.u-cover-absolute .u-image, .u-cover-absolute img'));
+      // The [data-img="background"] element wraps the full-bleed background image.
+      // Find the image/video to drift: prefer one inside a cover layer (when the
+      // attribute is on a whole section with extra content), else just the
+      // image(s) inside this wrapper (when the attribute is on a tight wrapper
+      // around the bg, as on the homepage). We move the IMAGE, never the section.
+      let targets = Array.from(host.querySelectorAll('.u-cover-absolute .u-image, .u-cover-absolute img, .u-cover-absolute video'));
       if (targets.length === 0) {
-        // Fallback: any image directly described as cover.
-        targets = Array.from(section.querySelectorAll('.u-cover-absolute .u-video'));
+        targets = Array.from(host.querySelectorAll('.u-image, img, .u-video, video'));
       }
-      if (targets.length === 0) return;
+      if (targets.length === 0) {
+        console.warn('🏞️ background parallax: no image found inside', host);
+        return;
+      }
+
+      // The parallax scrub follows the nearest real (box-generating) ancestor
+      // section/scroll context, since data-img often sits on a display:contents
+      // wrapper that has no box of its own.
+      const trigger = host.closest('section') || (getComputedStyle(host).display === 'contents'
+        ? host.parentElement : host) || host;
 
       targets.forEach((img) => {
-        const ir = img.getBoundingClientRect();
-        const sr = section.getBoundingClientRect();
-        console.log('🏞️ parallax target:', {
-          imgSize: Math.round(ir.width) + 'x' + Math.round(ir.height),
-          sectionSize: Math.round(sr.width) + 'x' + Math.round(sr.height),
-          sectionPos: getComputedStyle(section).position,
-          wrapperOverflow: img.parentElement ? getComputedStyle(img.parentElement).overflow : null
-        });
-        // Oversize so the ±7% drift never exposes an edge (cover images sit at
-        // exactly 100%); the u-image-wrapper clips the overflow.
+        // Clip the wrapper so the ±7% drift + 1.18 scale never exposes an edge.
+        const wrap = img.parentElement;
+        if (wrap && getComputedStyle(wrap).overflow === 'visible') wrap.style.overflow = 'hidden';
         gsap.set(img, { scale: 1.18, transformOrigin: 'center center', willChange: 'transform' });
         gsap.fromTo(img,
           { yPercent: -SHIFT },
@@ -4169,7 +4171,7 @@ function initBackgroundParallax() {
             yPercent: SHIFT,
             ease: 'none',
             scrollTrigger: {
-              trigger: section,
+              trigger,
               start: 'top bottom',
               end: 'bottom top',
               scrub: true,
