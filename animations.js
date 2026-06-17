@@ -2744,7 +2744,12 @@ function initScrubTypeText() {
       if (!playOnce) {
         const holdDuration = Math.max(0.8, textRevealDuration * 1.4);
         const fadeDuration = Math.max(0.4, textRevealDuration * 0.4);
-        tl.to(words, { opacity: 0, duration: fadeDuration, ease: 'none' }, textRevealDuration + holdDuration);
+        // On exit, fade the parent wrap ([data-quote="wrap"]) as a unit instead of
+        // just the words. Falls back to the words if no wrap is found.
+        const exitTarget = target.closest('[data-quote="wrap"]')
+          || wrapper.closest('[data-quote="wrap"]')
+          || words;
+        tl.to(exitTarget, { opacity: 0, duration: fadeDuration, ease: 'none' }, textRevealDuration + holdDuration);
       }
 
       state.timelines.push(tl);
