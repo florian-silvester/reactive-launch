@@ -2638,10 +2638,15 @@ function initScrubTypeText() {
         return;
       }
 
-      const trigger =
+      // Scrub mode = tied to a fixed section's scroll (e.g. "quote", which has a
+      // matching spacer trigger / [data-section]). Play-once mode = no matching
+      // section (e.g. "intro"): same word reveal, but triggered once when the
+      // element scrolls into view, at its natural pace, and it STAYS revealed.
+      const matchedTrigger =
         triggerElements.find((element) => getTriggerName(element) === typeName) ||
-        document.querySelector(`[data-section="${typeName}"]`) ||
-        wrapper;
+        document.querySelector(`[data-section="${typeName}"]`) || null;
+      const playOnce = !matchedTrigger;
+      const trigger = matchedTrigger || wrapper;
       const section = Array.from(document.querySelectorAll('[data-section]')).find((element) => {
         return (element.getAttribute('data-section') || '').trim().toLowerCase() === typeName;
       });
@@ -2675,17 +2680,25 @@ function initScrubTypeText() {
       });
 
       const tl = gsap.timeline({
-        scrollTrigger: {
-          trigger,
-          start: 'top center',
-          end: () => `+=${window.innerHeight * 1.6}`,
-          // scrub: 0.3 (was 1) — tight tracking. A full second of catch-up made
-          // the reveal trail behind the scroll and feel "laggy/confused"; 0.3
-          // keeps a touch of smoothing while staying glued to the scroll position.
-          scrub: 0.3,
-          invalidateOnRefresh: true,
-          refreshPriority: 20 + index
-        }
+        scrollTrigger: playOnce
+          ? {
+              // Play-once on scroll-into-view (e.g. "intro"). Natural pace, no scrub.
+              trigger,
+              start: 'top 80%',
+              toggleActions: 'play none none none',
+              once: true,
+              invalidateOnRefresh: true,
+              refreshPriority: 20 + index
+            }
+          : {
+              // Scrub mode (e.g. "quote") — reveal tied to the section's scroll.
+              trigger,
+              start: 'top center',
+              end: () => `+=${window.innerHeight * 1.6}`,
+              scrub: 0.3,
+              invalidateOnRefresh: true,
+              refreshPriority: 20 + index
+            }
       });
 
       words.forEach((word) => {
@@ -2709,20 +2722,13 @@ function initScrubTypeText() {
         state.overlays.push(overlay);
       }
 
-      // Reveal → HOLD (readable) → disappear. The disappear is intentional (the
-      // text clears to make room for the next section), but previously the
-      // readable plateau was a near-zero instant: the fade started ~0.2s after the
-      // last word, so fast scrolls skipped straight from "typing" to "gone".
-      //
-      // We now insert an explicit hold where nothing animates — the fully-typed
-      // text just sits readable for a generous chunk of the scroll range — and
-      // only then fade it out. Result: reveal ≈35%, hold ≈50%, fade ≈15% of the
-      // scroll distance. Fast scrolls land in the wide readable middle; only
-      // scrolling all the way past (genuinely leaving the section) reaches the
-      // intended empty end state.
-      const holdDuration = Math.max(0.8, textRevealDuration * 1.4);
-      const fadeDuration = Math.max(0.4, textRevealDuration * 0.4);
-      tl.to(words, { opacity: 0, duration: fadeDuration, ease: 'none' }, textRevealDuration + holdDuration);
+      // Scrub mode reveals → HOLDS → disappears (clears for the next section).
+      // Play-once mode just reveals and STAYS (no conceal).
+      if (!playOnce) {
+        const holdDuration = Math.max(0.8, textRevealDuration * 1.4);
+        const fadeDuration = Math.max(0.4, textRevealDuration * 0.4);
+        tl.to(words, { opacity: 0, duration: fadeDuration, ease: 'none' }, textRevealDuration + holdDuration);
+      }
 
       state.timelines.push(tl);
       if (tl.scrollTrigger) state.triggers.push(tl.scrollTrigger);
