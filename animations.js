@@ -2273,6 +2273,23 @@ function initFixedSectionSorting() {
 
   if (fixedSections.length < 2) return;
 
+  // The stylesheet sets `body { background: #fff }`, and the dark theme color is a
+  // CSS var only defined on .page_wrap — so html/body fall back to WHITE. On
+  // mobile the fixed sections don't cover the dynamic-viewport edges, exposing
+  // that white. Pin html+body to the sections' actual computed dark color (a
+  // resolved value applied inline beats the #fff rule and matches seamlessly).
+  try {
+    const sampleVisual = fixedSections[0].visual || fixedSections[0].root;
+    let dark = window.getComputedStyle(sampleVisual).backgroundColor;
+    if (!dark || /rgba?\(0,\s*0,\s*0,\s*0\)|transparent/.test(dark)) {
+      const pw = document.querySelector('.page_wrap');
+      dark = pw ? window.getComputedStyle(pw).backgroundColor : '';
+    }
+    if (!dark || /rgba?\(0,\s*0,\s*0,\s*0\)|transparent/.test(dark)) dark = '#0a0a0a';
+    document.documentElement.style.backgroundColor = dark;
+    document.body.style.backgroundColor = dark;
+  } catch (e) {}
+
   const runId = (window.fixedSectionSortingRunId || 0) + 1;
   window.fixedSectionSortingRunId = runId;
 
