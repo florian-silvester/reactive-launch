@@ -4141,15 +4141,12 @@ function initBackgroundParallax() {
       host.dataset.bgParallaxInit = 'true';
 
       // The [data-img="background"] element wraps the full-bleed background image.
-      // Find the image/video to drift: prefer one inside a cover layer (when the
-      // attribute is on a whole section with extra content), else just the
-      // image(s) inside this wrapper (when the attribute is on a tight wrapper
-      // around the bg, as on the homepage). We move the IMAGE, never the section.
-      let targets = Array.from(host.querySelectorAll('.u-cover-absolute .u-image, .u-cover-absolute img, .u-cover-absolute video'));
-      if (targets.length === 0) {
-        targets = Array.from(host.querySelectorAll('.u-image, img, .u-video, video'));
-      }
-      if (targets.length === 0) {
+      // Target ONLY ONE image — the primary background — not every image inside
+      // (that would parallax unrelated content images too). Prefer one inside a
+      // cover layer, else the first image/video in the wrapper.
+      const img = host.querySelector('.u-cover-absolute .u-image, .u-cover-absolute img, .u-cover-absolute video')
+        || host.querySelector('.u-image, img, .u-video, video');
+      if (!img) {
         console.warn('🏞️ background parallax: no image found inside', host);
         return;
       }
@@ -4160,27 +4157,25 @@ function initBackgroundParallax() {
       const trigger = host.closest('section') || (getComputedStyle(host).display === 'contents'
         ? host.parentElement : host) || host;
 
-      targets.forEach((img) => {
-        // Clip the wrapper so the ±7% drift + 1.18 scale never exposes an edge.
-        const wrap = img.parentElement;
-        if (wrap && getComputedStyle(wrap).overflow === 'visible') wrap.style.overflow = 'hidden';
-        gsap.set(img, { scale: 1.18, transformOrigin: 'center center', willChange: 'transform' });
-        gsap.fromTo(img,
-          { yPercent: -SHIFT },
-          {
-            yPercent: SHIFT,
-            ease: 'none',
-            scrollTrigger: {
-              trigger,
-              start: 'top bottom',
-              end: 'bottom top',
-              scrub: true,
-              invalidateOnRefresh: true,
-            },
-          }
-        );
-        count += 1;
-      });
+      // Clip the wrapper so the ±7% drift + 1.18 scale never exposes an edge.
+      const wrap = img.parentElement;
+      if (wrap && getComputedStyle(wrap).overflow === 'visible') wrap.style.overflow = 'hidden';
+      gsap.set(img, { scale: 1.18, transformOrigin: 'center center', willChange: 'transform' });
+      gsap.fromTo(img,
+        { yPercent: -SHIFT },
+        {
+          yPercent: SHIFT,
+          ease: 'none',
+          scrollTrigger: {
+            trigger,
+            start: 'top bottom',
+            end: 'bottom top',
+            scrub: true,
+            invalidateOnRefresh: true,
+          },
+        }
+      );
+      count += 1;
     });
     console.log('🏞️ background parallax: initialized', count, 'images in', sections.length, 'sections');
   }).catch((err) => console.error('🏞️ background parallax:', err));
