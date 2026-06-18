@@ -4428,6 +4428,14 @@ function initBackgroundParallax() {
   const SHIFT = 7;   // % of the image height it drifts each way
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
+  // No parallax on mobile / touch. The yPercent drift + 1.18 scale was shoving
+  // the footer and quote background images up by ~nav height on phones (they
+  // looked offset). This effect is desktop-only — bail before applying any
+  // transform so the images sit flush.
+  const isMobile = window.matchMedia('(max-width: 767px)').matches
+    || window.matchMedia('(pointer: coarse)').matches;
+  if (isMobile) return;
+
   loadScrollTriggerOnce().then(() => {
     let count = 0;
     sections.forEach((host) => {
