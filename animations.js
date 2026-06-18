@@ -2829,46 +2829,62 @@ function initScrubTypeText() {
 // lifts, so a slow or absent GSAP can never leave the page stuck behind a black box.
 function initHeroCurtain() {
   const curtain = document.querySelector('.hero_curtain, [data-hero-curtain]');
-  if (!curtain) return;
+  if (!curtain) { window.heroCurtainActive = false; return; }
   if (curtain.dataset.curtainInit === 'true') return;
   curtain.dataset.curtainInit = 'true';
 
+  // Tell the header typewriter to HOLD any in-view heading until we lift, so the
+  // title is never typed behind the cover (reveal = curtain lifts, THEN type).
+  window.heroCurtainActive = true;
+  window.heroCurtainLifted = false;
+
   const G = (typeof gsap !== 'undefined') ? gsap : null;
 
-  // Keep it covering, on top, and click-through while it's shown.
-  if (G) {
-    G.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
-  } else {
-    curtain.style.opacity = '1';
-    curtain.style.visibility = 'visible';
-    curtain.style.pointerEvents = 'none';
-  }
+  // Promote to a TRUE full-viewport cover, on top of everything. In the Designer
+  // the curtain is position:absolute inside the hero stack (a transformed
+  // ancestor), so it only covers part of the hero and never the title — which is
+  // why the flash showed through. Capture its colour, then re-parent to <body>
+  // and pin it to the viewport so it covers the whole screen regardless of where
+  // it lives in the structure. (No Designer restructuring needed.)
+  const bg = getComputedStyle(curtain).backgroundColor;
+  const solidBg = (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') ? bg : '#0f0f0f';
+  document.body.appendChild(curtain);
+  Object.assign(curtain.style, {
+    position: 'fixed', top: '0', left: '0', right: '0', bottom: '0',
+    width: '100vw', height: '100vh', margin: '0',
+    zIndex: '2147483000', backgroundColor: solidBg,
+    pointerEvents: 'none', opacity: '1', visibility: 'visible', display: 'block'
+  });
 
   let lifted = false;
+  const reveal = () => {
+    window.heroCurtainLifted = true;
+    document.dispatchEvent(new Event('hero:curtain-lifted'));
+  };
   const lift = () => {
     if (lifted) return;
     lifted = true;
     if (G) {
       G.to(curtain, {
         autoAlpha: 0,
-        duration: 0.8,
+        duration: 0.6,
         ease: 'power2.inOut',
-        onComplete: () => { curtain.style.display = 'none'; }
+        onComplete: () => { curtain.style.display = 'none'; reveal(); }
       });
     } else {
-      curtain.style.transition = 'opacity 0.8s ease';
+      curtain.style.transition = 'opacity 0.6s ease';
       curtain.style.opacity = '0';
-      setTimeout(() => { curtain.style.display = 'none'; }, 850);
+      setTimeout(() => { curtain.style.display = 'none'; reveal(); }, 620);
     }
   };
 
-  // Lift just after the hero is ready (window `load`), with a short intentional
-  // hold — and a hard cap so it can never linger on a slow-loading page.
+  // Hold briefly — long enough to mask the flash and let the typewriter arm and
+  // defer — then lift. A hard cap guarantees it never lingers on a slow page.
   if (document.readyState === 'complete') {
-    setTimeout(lift, 400);
+    setTimeout(lift, 1000);
   } else {
-    window.addEventListener('load', () => setTimeout(lift, 400), { once: true });
-    setTimeout(lift, 1600); // hard cap from first init
+    window.addEventListener('load', () => setTimeout(lift, 450), { once: true });
+    setTimeout(lift, 2400); // safety cap if load is slow/never fires
   }
 }
 
@@ -2981,16 +2997,9 @@ function initHeaderTypeText() {
         gsap.set(chars, { autoAlpha: 0 });
 
         const charPace = 0.0175; // 30% faster (was 0.025) → ~57 chars/sec
-        const tl = gsap.timeline({
-          scrollTrigger: {
-            trigger: target,
-            start: 'top 85%',
-            toggleActions: 'play none none none',
-            once: true,
-            invalidateOnRefresh: true,
-            refreshPriority: 30 + wrapperIndex + targetIndex * 0.01
-          }
-        });
+        // Paused timeline — typing start is controlled below so it can be held
+        // behind the hero curtain until that lifts (reveal first, THEN type).
+        const tl = gsap.timeline({ paused: true });
 
         tl.to(chars, {
           autoAlpha: 1,
@@ -2999,14 +3008,36 @@ function initHeaderTypeText() {
           stagger: charPace
         });
 
-        // If already in view at init, force-play (matches old behavior).
+        const startTyping = () => { if (tl.progress() === 0) tl.play(); };
+        // Begin typing when the heading scrolls in — UNLESS the hero curtain is
+        // still up, in which case wait for it to lift so the title never types
+        // behind the cover. (Below-fold headings enter long after the curtain is
+        // gone, so they just type normally.)
+        const triggerPlay = () => {
+          if (window.heroCurtainActive && !window.heroCurtainLifted) {
+            document.addEventListener('hero:curtain-lifted', startTyping, { once: true });
+          } else {
+            startTyping();
+          }
+        };
+
+        const st = ScrollTrigger.create({
+          trigger: target,
+          start: 'top 85%',
+          once: true,
+          invalidateOnRefresh: true,
+          refreshPriority: 30 + wrapperIndex + targetIndex * 0.01,
+          onEnter: triggerPlay
+        });
+
+        // Backup for headings already in view at init (in case onEnter is missed).
         requestAnimationFrame(() => {
           const rect = target.getBoundingClientRect();
-          if (rect.top <= window.innerHeight * 0.85 && tl.progress() === 0) tl.play();
+          if (rect.top <= window.innerHeight * 0.85 && tl.progress() === 0) triggerPlay();
         });
 
         state.timelines.push(tl);
-        if (tl.scrollTrigger) state.triggers.push(tl.scrollTrigger);
+        if (st) state.triggers.push(st);
       });
     });
 
