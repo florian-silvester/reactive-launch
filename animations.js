@@ -21,6 +21,18 @@ try {
   });
 } catch (e) {}
 
+// Hero load curtain: lift the `.hero_curtain` cover as soon as the page is ready.
+// Runs early and independently of the main init chain so the curtain never
+// lingers; initHeroCurtain has a hard cap + CSS fallback so it can't get stuck.
+(function () {
+  const go = () => { try { initHeroCurtain(); } catch (e) {} };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', go, { once: true });
+  } else {
+    go();
+  }
+})();
+
 const AUTO_SCROLL_SPEED_PX_PER_SEC = 60; // fixed speed for auto-scroll (25% slower)
 
 // Load GSAP ScrollToPlugin if not already loaded
@@ -383,6 +395,7 @@ if (!window.barbaInitialized) {
           setTimeout(() => {
             initAccordionTabsCombo();
             initHeroTypeSequence();
+            initHeroCurtain();
             initTypeBuild();
             initBackgroundParallax();
             initHeadroomNav();
@@ -461,6 +474,7 @@ if (!window.barbaInitialized) {
       initHeaderTypeText();
       initAccordionTabsCombo();
       initHeroTypeSequence();
+      initHeroCurtain();
       initTypeBuild();
       initBackgroundParallax();
       initHeadroomNav();
@@ -2804,6 +2818,60 @@ function initScrubTypeText() {
 // SplitText wraps each character in its own inline-block child, leaving everything
 // above untouched. On cleanup we call split.revert() which restores the original DOM
 // byte-for-byte.
+// Hero load curtain. `.hero_curtain` (u-cover-absolute u-background-1
+// u-min-height-screen) sits on top of the hero as a solid dark cover. On the
+// current design nothing else touches it (the old hero-cell intro and the
+// data-type-build sequence don't run), so this is the single authority: hold the
+// curtain briefly on load, then fade it out to reveal the hero.
+//
+// Self-timed + idempotent — safe to call from every init path. A per-element flag
+// stops double-runs; a hard cap and a CSS fallback guarantee the curtain ALWAYS
+// lifts, so a slow or absent GSAP can never leave the page stuck behind a black box.
+function initHeroCurtain() {
+  const curtain = document.querySelector('.hero_curtain, [data-hero-curtain]');
+  if (!curtain) return;
+  if (curtain.dataset.curtainInit === 'true') return;
+  curtain.dataset.curtainInit = 'true';
+
+  const G = (typeof gsap !== 'undefined') ? gsap : null;
+
+  // Keep it covering, on top, and click-through while it's shown.
+  if (G) {
+    G.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
+  } else {
+    curtain.style.opacity = '1';
+    curtain.style.visibility = 'visible';
+    curtain.style.pointerEvents = 'none';
+  }
+
+  let lifted = false;
+  const lift = () => {
+    if (lifted) return;
+    lifted = true;
+    if (G) {
+      G.to(curtain, {
+        autoAlpha: 0,
+        duration: 0.8,
+        ease: 'power2.inOut',
+        onComplete: () => { curtain.style.display = 'none'; }
+      });
+    } else {
+      curtain.style.transition = 'opacity 0.8s ease';
+      curtain.style.opacity = '0';
+      setTimeout(() => { curtain.style.display = 'none'; }, 850);
+    }
+  };
+
+  // Lift just after the hero is ready (window `load`), with a short intentional
+  // hold — and a hard cap so it can never linger on a slow-loading page.
+  if (document.readyState === 'complete') {
+    setTimeout(lift, 400);
+  } else {
+    window.addEventListener('load', () => setTimeout(lift, 400), { once: true });
+    setTimeout(lift, 1600); // hard cap from first init
+  }
+}
+
 function initHeaderTypeText() {
   if (typeof gsap === 'undefined') return;
 
@@ -4482,6 +4550,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initStickySectionOverlays();
   initAccordionTabsCombo();
   initHeroTypeSequence();
+  initHeroCurtain();
   initTypeBuild();
   initBackgroundParallax();
   initHeadroomNav();
@@ -4503,6 +4572,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     initStickySectionOverlays();
     initAccordionTabsCombo();
     initHeroTypeSequence();
+    initHeroCurtain();
     initTypeBuild();
     initBackgroundParallax();
     initHeadroomNav();
