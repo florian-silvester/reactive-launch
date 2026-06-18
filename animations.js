@@ -2818,73 +2818,67 @@ function initScrubTypeText() {
 // SplitText wraps each character in its own inline-block child, leaving everything
 // above untouched. On cleanup we call split.revert() which restores the original DOM
 // byte-for-byte.
-// Hero load curtain. `.hero_curtain` (u-cover-absolute u-background-1
-// u-min-height-screen) sits on top of the hero as a solid dark cover. On the
-// current design nothing else touches it (the old hero-cell intro and the
-// data-type-build sequence don't run), so this is the single authority: hold the
-// curtain briefly on load, then fade it out to reveal the hero.
+// Hero load intro. Drives the load cover and coordinates the title type-in so the
+// order is always: cover holds → cover fades → title types (never behind the cover).
 //
-// Self-timed + idempotent — safe to call from every init path. A per-element flag
-// stops double-runs; a hard cap and a CSS fallback guarantee the curtain ALWAYS
-// lifts, so a slow or absent GSAP can never leave the page stuck behind a black box.
+// It works with either / both cover mechanisms:
+//   • the head-level `::before` cover (the recommended one): the <head> snippet
+//     adds `intro-cover` to <html> before first paint — immune to the transform
+//     trap because it isn't inside the layout — and this fades it by adding
+//     `intro-done` (CSS transition handles the visual).
+//   • a literal `.hero_curtain` element, if one exists, is faded out too.
+//
+// The head snippet's own setTimeout is now ONLY a safety fallback — the real
+// timing lives here. Idempotent (flag on <html>) so the five init paths are safe.
 function initHeroCurtain() {
+  const html = document.documentElement;
   const curtain = document.querySelector('.hero_curtain, [data-hero-curtain]');
-  if (!curtain) { window.heroCurtainActive = false; return; }
-  if (curtain.dataset.curtainInit === 'true') return;
-  curtain.dataset.curtainInit = 'true';
+  const hasHeadCover = html.classList.contains('intro-cover');
 
-  // Tell the header typewriter to HOLD any in-view heading until we lift, so the
-  // title is never typed behind the cover (reveal = curtain lifts, THEN type).
+  // No cover present at all → nothing to gate; let headings type normally.
+  if (!curtain && !hasHeadCover) { window.heroCurtainActive = false; return; }
+  if (html.dataset.heroIntroInit === 'true') return;
+  html.dataset.heroIntroInit = 'true';
+
+  // Hold the header typewriter until we lift, so the title types AFTER the reveal.
   window.heroCurtainActive = true;
   window.heroCurtainLifted = false;
 
   const G = (typeof gsap !== 'undefined') ? gsap : null;
 
-  // Promote to a TRUE full-viewport cover, on top of everything. In the Designer
-  // the curtain is position:absolute inside the hero stack (a transformed
-  // ancestor), so it only covers part of the hero and never the title — which is
-  // why the flash showed through. Capture its colour, then re-parent to <body>
-  // and pin it to the viewport so it covers the whole screen regardless of where
-  // it lives in the structure. (No Designer restructuring needed.)
-  const bg = getComputedStyle(curtain).backgroundColor;
-  const solidBg = (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') ? bg : '#0f0f0f';
-  document.body.appendChild(curtain);
-  Object.assign(curtain.style, {
-    position: 'fixed', top: '0', left: '0', right: '0', bottom: '0',
-    width: '100vw', height: '100vh', margin: '0',
-    zIndex: '2147483000', backgroundColor: solidBg,
-    pointerEvents: 'none', opacity: '1', visibility: 'visible', display: 'block'
-  });
+  // Keep a literal curtain element solid + click-through while shown.
+  if (curtain) {
+    if (G) G.set(curtain, { autoAlpha: 1, pointerEvents: 'none' });
+    else { curtain.style.opacity = '1'; curtain.style.visibility = 'visible'; curtain.style.pointerEvents = 'none'; }
+  }
 
   let lifted = false;
   const reveal = () => {
+    if (window.heroCurtainLifted) return;
     window.heroCurtainLifted = true;
     document.dispatchEvent(new Event('hero:curtain-lifted'));
   };
   const lift = () => {
     if (lifted) return;
     lifted = true;
-    if (G) {
-      G.to(curtain, {
-        autoAlpha: 0,
-        duration: 0.6,
-        ease: 'power2.inOut',
-        onComplete: () => { curtain.style.display = 'none'; reveal(); }
-      });
-    } else {
-      curtain.style.transition = 'opacity 0.6s ease';
-      curtain.style.opacity = '0';
-      setTimeout(() => { curtain.style.display = 'none'; reveal(); }, 620);
+    // 1) Fade the head ::before cover (CSS `transition` does the visual).
+    html.classList.add('intro-done');
+    // 2) Fade a literal curtain element too, if present.
+    if (curtain) {
+      if (G) G.to(curtain, { autoAlpha: 0, duration: 0.6, ease: 'power2.inOut', onComplete: () => { curtain.style.display = 'none'; } });
+      else { curtain.style.transition = 'opacity 0.6s ease'; curtain.style.opacity = '0'; setTimeout(() => { curtain.style.display = 'none'; }, 620); }
     }
+    // 3) Type the title as the cover clears — a touch into the fade, so you watch
+    //    it type on the revealing page with no dead pause.
+    setTimeout(reveal, 350);
   };
 
-  // Hold briefly — long enough to mask the flash and let the typewriter arm and
-  // defer — then lift. A hard cap guarantees it never lingers on a slow page.
+  // Short hold, then lift. Hard cap so it never lingers on a slow page.
   if (document.readyState === 'complete') {
-    setTimeout(lift, 1000);
+    setTimeout(lift, 550);
   } else {
-    window.addEventListener('load', () => setTimeout(lift, 450), { once: true });
-    setTimeout(lift, 2400); // safety cap if load is slow/never fires
+    window.addEventListener('load', () => setTimeout(lift, 350), { once: true });
+    setTimeout(lift, 1800);
   }
 }
 
